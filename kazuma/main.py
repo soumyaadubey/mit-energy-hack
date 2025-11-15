@@ -1,41 +1,30 @@
 """
-Industrial Emissions Visualization Tool for Legislators
+Smart Grid Siting Framework API
 
-Visualize carbon emissions from steel, cement, and chemical factories across the US.
-Simulate policy impacts including carbon taxes, emissions caps, and filtering requirements.
-Data powered by EPA GHGRP, FRS, TRI, and ECHO databases.
+FastAPI application for optimal siting of electro-intensive loads.
+Provides endpoints for grid node data, siting evaluation, and scenario comparison.
 """
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List, Literal
-from datetime import datetime
-import httpx
+from typing import Optional, List, Literal
 import logging
 import os
-import json
-from io import BytesIO
-import pandas as pd
 
-# Import our custom modules
+# Import grid siting modules
 from models import (
-    IndustrialFacility,
-    FacilityQuery,
-    FacilityDetail,
-    AggregatedEmissions,
-    PolicyScenario,
-    PolicyImpactResult,
-    FacilityCoordinates,
-    EmissionsByGasType,
-    CarbonTaxPolicy,
-    EmissionsCap,
-    FilteringRequirement
+    GridNode,
+    SitingWeights,
+    SitingRequest,
+    SiteEvaluation,
+    ScenarioComparison,
+    GeoJSONResponse,
+    DemandProfile
 )
-from epa_data import EPADataFetcher, merge_facility_data
-from policy_engine import PolicyEngine
+from grid_data import generate_mock_grid_nodes, get_node_by_id
+from siting_engine import SitingEngine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,12 +32,12 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Industrial Emissions Visualization Tool",
-    description="Legislative tool to visualize and simulate policy impacts on industrial CO2 emissions from steel, cement, and chemical facilities",
-    version="2.0.0"
+    title="Smart Grid Siting Framework",
+    description="Intelligent siting framework for large electro-intensive loads to optimize grid integration",
+    version="1.0.0"
 )
 
-# Add CORS middleware (no auth for hackathon demo)
+# Add CORS middleware (hackathon mode)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -59,31 +48,48 @@ app.add_middleware(
 
 # Configuration
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
-CACHE_DIR = os.getenv("CACHE_DIR", "./data/cache")
-DEFAULT_YEAR = 2022
 
 # Initialize services
-epa_fetcher = EPADataFetcher()
-policy_engine = PolicyEngine()
+siting_engine = SitingEngine()
+grid_nodes = generate_mock_grid_nodes()  # Cache in memory
 
-# In-memory cache for facilities data
-facilities_cache: Dict[str, List[IndustrialFacility]] = {}
-cache_timestamp: Dict[str, datetime] = {}
+# Scenarios storage (in-memory for demo)
+saved_scenarios: List[SiteEvaluation] = []
 
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main HTML interface"""
+    """Serve the map view (home page)"""
     try:
-        return FileResponse("static/index.html")
+        return FileResponse("static/map.html")
     except FileNotFoundError:
         return HTMLResponse("""
         <!DOCTYPE html>
         <html>
-        <head><title>Industrial Emissions Visualization</title></head>
+        <head><title>Smart Grid Siting Framework</title></head>
         <body>
-            <h1>Industrial Emissions Visualization Tool</h1>
-            <p>Frontend not found. Please ensure static/index.html exists.</p>
+            <h1>Smart Grid Siting Framework</h1>
+            <p>Map view not found. Please ensure static/map.html exists.</p>
+            <p><a href="/framework">Go to Siting Framework →</a></p>
+        </body>
+        </html>
+        """)
+
+
+@app.get("/framework", response_class=HTMLResponse)
+async def framework_page():
+    """Serve the siting framework (optimization page)"""
+    try:
+        return FileResponse("static/framework.html")
+    except FileNotFoundError:
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Siting Framework</title></head>
+        <body>
+            <h1>Siting Framework</h1>
+            <p>Framework page not found. Please ensure static/framework.html exists.</p>
+            <p><a href="/">← Back to Map View</a></p>
         </body>
         </html>
         """)
@@ -94,9 +100,9 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "service": "industrial-emissions-viz",
-        "version": "2.0.0",
-        "data_sources": ["EPA GHGRP", "EPA FRS", "EPA TRI", "EPA ECHO"]
+        "service": "smart-grid-siting",
+        "version": "1.0.0",
+        "nodes_loaded": len(grid_nodes)
     }
 
 
@@ -105,516 +111,361 @@ async def get_config():
     """Get client configuration"""
     return {
         "mapbox_token": MAPBOX_TOKEN,
-        "default_center": [-95.7129, 37.0902],  # Center of continental US
+        "default_center": [-98.5795, 39.8283],  # Geographic center of continental US
         "default_zoom": 4,
-        "available_years": list(range(2010, 2024)),
-        "industries": ["steel", "cement", "chemicals"]
-    }
-
-
-@app.get("/api/integration-status")
-async def integration_status():
-    """
-    Return status information about external integrations.
-    """
-    mapbox_configured = bool(MAPBOX_TOKEN)
-    epa_api_reachable = False
-    last_checked = None
-
-    # Probe the EPA API
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get("https://data.epa.gov/efservice/tri.tri_facility/state_abbr/equals/VA/1:1/JSON")
-            epa_api_reachable = resp.status_code < 400
-    except Exception:
-        epa_api_reachable = False
-    last_checked = datetime.utcnow().isoformat() + "Z"
-
-    return {
-        "mapbox_configured": mapbox_configured,
-        "epa_api_base": "https://data.epa.gov/efservice",
-        "epa_api_reachable": epa_api_reachable,
-        "last_checked": last_checked,
-        "cache_enabled": os.path.exists(CACHE_DIR),
-        "facilities_cached": len(facilities_cache)
+        "default_weights": {
+            "clean": 0.4,
+            "transmission": 0.3,
+            "reliability": 0.3
+        },
+        "demand_types": ["data_center", "electrolyzer", "ev_hub", "hydrogen_plant", "ai_compute"]
     }
 
 
 # ============================================================================
-# FACILITY DATA ENDPOINTS
+# GRID DATA ENDPOINTS
 # ============================================================================
 
-@app.get("/api/facilities")
-async def get_facilities(
-    industry_type: Optional[Literal["steel", "cement", "chemicals"]] = None,
-    state: Optional[str] = Query(None, max_length=2, description="Two-letter state code"),
-    year: int = Query(DEFAULT_YEAR, ge=2010, le=2023),
-    min_emissions: Optional[float] = Query(None, ge=0),
-    max_emissions: Optional[float] = None,
-    limit: int = Query(1000, le=5000),
-    offset: int = Query(0, ge=0)
-):
-    """
-    Query industrial facilities with filters.
-    
-    Returns list of facilities matching criteria with basic info for map display.
-    """
-    try:
-        # Check cache first
-        cache_key = f"{industry_type}_{state}_{year}"
-        
-        if cache_key in facilities_cache and cache_key in cache_timestamp:
-            # Use cache if less than 24 hours old
-            age = datetime.utcnow() - cache_timestamp[cache_key]
-            if age.total_seconds() < 86400:
-                facilities = facilities_cache[cache_key]
-                logger.info(f"Using cached data for {cache_key}")
-            else:
-                facilities = await _fetch_and_cache_facilities(industry_type, state, year, cache_key)
-        else:
-            facilities = await _fetch_and_cache_facilities(industry_type, state, year, cache_key)
-        
-        # Apply additional filters
-        filtered = facilities
-        if min_emissions is not None:
-            filtered = [f for f in filtered if f.emissions_by_gas.total_co2e >= min_emissions]
-        if max_emissions is not None:
-            filtered = [f for f in filtered if f.emissions_by_gas.total_co2e <= max_emissions]
-        
-        # Apply pagination
-        total = len(filtered)
-        paginated = filtered[offset:offset + limit]
-        
-        return {
-            "facilities": [f.dict() for f in paginated],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < total
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching facilities: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/facilities/{facility_id}")
-async def get_facility_detail(facility_id: str):
-    """
-    Get detailed information for a specific facility.
-    
-    Includes all EPA data attributes, compliance history, and emissions breakdown.
-    """
-    try:
-        # Search through cache for facility
-        for cached_facilities in facilities_cache.values():
-            for facility in cached_facilities:
-                if facility.facility_id == facility_id:
-                    return {"facility": facility.dict()}
-        
-        # If not in cache, return 404
-        raise HTTPException(status_code=404, detail=f"Facility {facility_id} not found")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching facility detail: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/emissions/aggregated")
-async def get_aggregated_emissions(
-    aggregation: Literal["state", "county", "epa_region"] = "state",
-    year: int = Query(DEFAULT_YEAR, ge=2010, le=2023),
-    industry_type: Optional[Literal["steel", "cement", "chemicals"]] = None
-):
-    """
-    Get aggregated emissions data for choropleth visualization.
-    
-    Returns emissions totals by state, county, or EPA region.
-    """
-    try:
-        # Fetch all facilities for the year
-        cache_key = f"all_{industry_type}_{year}"
-        
-        if cache_key in facilities_cache:
-            facilities = facilities_cache[cache_key]
-        else:
-            facilities = await _fetch_and_cache_facilities(industry_type, None, year, cache_key)
-        
-        # Aggregate by requested level
-        aggregated = {}
-        
-        for facility in facilities:
-            if aggregation == "state":
-                key = facility.state
-                name = facility.state
-            elif aggregation == "epa_region":
-                key = str(facility.epa_region) if facility.epa_region else "Unknown"
-                name = f"EPA Region {facility.epa_region}" if facility.epa_region else "Unknown"
-            else:  # county
-                key = f"{facility.state}_{facility.county}" if facility.county else facility.state
-                name = f"{facility.county}, {facility.state}" if facility.county else facility.state
-            
-            if key not in aggregated:
-                aggregated[key] = {
-                    "region_id": key,
-                    "region_name": name,
-                    "total_facilities": 0,
-                    "total_emissions_mt_co2e": 0,
-                    "facilities_by_industry": {},
-                    "emissions_by_industry": {}
-                }
-            
-            aggregated[key]["total_facilities"] += 1
-            aggregated[key]["total_emissions_mt_co2e"] += facility.emissions_by_gas.total_co2e
-            
-            industry = facility.industry_type
-            aggregated[key]["facilities_by_industry"][industry] = \
-                aggregated[key]["facilities_by_industry"].get(industry, 0) + 1
-            aggregated[key]["emissions_by_industry"][industry] = \
-                aggregated[key]["emissions_by_industry"].get(industry, 0) + facility.emissions_by_gas.total_co2e
-        
-        return {
-            "aggregation_level": aggregation,
-            "year": year,
-            "regions": list(aggregated.values())
-        }
-        
-    except Exception as e:
-        logger.error(f"Error aggregating emissions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/facilities/geojson")
-async def get_facilities_geojson(
-    industry_type: Optional[Literal["steel", "cement", "chemicals"]] = None,
+@app.get("/api/grid/nodes")
+async def get_grid_nodes(
+    region: Optional[str] = None,
     state: Optional[str] = None,
-    year: int = Query(DEFAULT_YEAR, ge=2010, le=2023),
-    limit: int = Query(1000, le=5000)
+    min_clean_gen: Optional[float] = Query(None, ge=0, le=100),
+    min_transmission: Optional[float] = Query(None, ge=0, le=100),
+    min_reliability: Optional[float] = Query(None, ge=0, le=100)
 ):
     """
-    Get facilities as GeoJSON FeatureCollection for Mapbox.
+    Get grid nodes with optional filters.
+    
+    Returns list of grid nodes with metadata.
+    """
+    nodes = grid_nodes
+    
+    # Apply filters
+    if region:
+        nodes = [n for n in nodes if n.region == region]
+    
+    if state:
+        nodes = [n for n in nodes if n.state == state]
+    
+    if min_clean_gen is not None:
+        nodes = [n for n in nodes if n.clean_gen >= min_clean_gen]
+    
+    if min_transmission is not None:
+        nodes = [n for n in nodes if n.transmission_headroom >= min_transmission]
+    
+    if min_reliability is not None:
+        nodes = [n for n in nodes if n.reliability >= min_reliability]
+    
+    return {
+        "nodes": [n.dict() for n in nodes],
+        "total": len(nodes),
+        "filters_applied": {
+            "region": region,
+            "state": state,
+            "min_clean_gen": min_clean_gen,
+            "min_transmission": min_transmission,
+            "min_reliability": min_reliability
+        }
+    }
+
+
+@app.get("/api/grid/nodes/{node_id}")
+async def get_grid_node(node_id: int):
+    """
+    Get detailed information for a specific grid node.
+    """
+    try:
+        node = get_node_by_id(node_id)
+        return {"node": node.dict()}
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Grid node {node_id} not found")
+
+
+@app.get("/api/grid/nodes/geojson")
+async def get_grid_nodes_geojson(
+    region: Optional[str] = None,
+    state: Optional[str] = None
+):
+    """
+    Get grid nodes as GeoJSON FeatureCollection for Mapbox.
     
     Optimized for map rendering with essential properties only.
-    Falls back to sample data if EPA data not available.
     """
-    try:
-        cache_key = f"{industry_type}_{state}_{year}"
-        
-        if cache_key in facilities_cache:
-            facilities = facilities_cache[cache_key]
-        else:
-            try:
-                facilities = await _fetch_and_cache_facilities(industry_type, state, year, cache_key)
-            except Exception as fetch_error:
-                logger.warning(f"EPA fetch failed, using sample data: {fetch_error}")
-                # Return empty result for now - sample data endpoint provides demo data
-                return {
-                    "type": "FeatureCollection",
-                    "features": []
-                }
-        
-        # Convert to GeoJSON
-        features = [f.to_geojson_feature() for f in facilities[:limit]]
-        
-        return {
-            "type": "FeatureCollection",
-            "features": features
-        }
-        
-    except Exception as e:
-        logger.error(f"Error generating GeoJSON: {e}")
-        # Return empty collection instead of 500 error
-        return {
-            "type": "FeatureCollection",
-            "features": []
-        }
-
-
-# ============================================================================
-# POLICY SIMULATION ENDPOINT
-# ============================================================================
-
-@app.post("/api/policy/simulate", response_model=PolicyImpactResult)
-async def simulate_policy(scenario: PolicyScenario):
-    """
-    Simulate policy impact on industrial emissions.
+    nodes = grid_nodes
     
-    Calculates effects of carbon taxes, emissions caps, and filtering requirements.
-    Returns emissions reductions, costs, and impacts by industry/state.
-    """
-    try:
-        # Fetch facilities based on scenario targets
-        year = DEFAULT_YEAR
-        
-        # Get all relevant facilities
-        all_facilities = []
-        
-        if scenario.target_industries:
-            for industry in scenario.target_industries:
-                cache_key = f"{industry}_None_{year}"
-                if cache_key in facilities_cache:
-                    all_facilities.extend(facilities_cache[cache_key])
-                else:
-                    fetched = await _fetch_and_cache_facilities(industry, None, year, cache_key)
-                    all_facilities.extend(fetched)
-        else:
-            # Fetch all industries
-            for industry in ["steel", "cement", "chemicals"]:
-                cache_key = f"{industry}_None_{year}"
-                if cache_key in facilities_cache:
-                    all_facilities.extend(facilities_cache[cache_key])
-                else:
-                    fetched = await _fetch_and_cache_facilities(industry, None, year, cache_key)
-                    all_facilities.extend(fetched)
-        
-        # Run policy simulation
-        result = policy_engine.simulate_policy(all_facilities, scenario)
-        
-        logger.info(f"Policy simulation complete: {result.emissions_reduction_percentage}% reduction")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error simulating policy: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# DATA EXPORT ENDPOINTS
-# ============================================================================
-
-@app.get("/api/export/facilities/csv")
-async def export_facilities_csv(
-    industry_type: Optional[Literal["steel", "cement", "chemicals"]] = None,
-    state: Optional[str] = None,
-    year: int = Query(DEFAULT_YEAR, ge=2010, le=2023)
-):
-    """Export facilities data as CSV file"""
-    try:
-        cache_key = f"{industry_type}_{state}_{year}"
-        
-        if cache_key in facilities_cache:
-            facilities = facilities_cache[cache_key]
-        else:
-            facilities = await _fetch_and_cache_facilities(industry_type, state, year, cache_key)
-        
-        # Convert to DataFrame
-        data = []
-        for f in facilities:
-            data.append({
-                "Facility ID": f.facility_id,
-                "Name": f.facility_name,
-                "Industry": f.industry_type,
-                "City": f.city,
-                "State": f.state,
-                "NAICS": f.naics_code,
-                "Latitude": f.coordinates.latitude,
-                "Longitude": f.coordinates.longitude,
-                "Total Emissions (MT CO2e)": f.emissions_by_gas.total_co2e,
-                "CO2 (MT)": f.emissions_by_gas.co2,
-                "CH4 (MT)": f.emissions_by_gas.ch4,
-                "N2O (MT)": f.emissions_by_gas.n2o,
-                "Year": f.reporting_year,
-                "Violations": f.total_violations,
-                "Parent Company": f.parent_company_name or "N/A"
-            })
-        
-        df = pd.DataFrame(data)
-        
-        # Convert to CSV
-        output = BytesIO()
-        df.to_csv(output, index=False)
-        output.seek(0)
-        
-        return StreamingResponse(
-            output,
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=facilities_{year}.csv"}
-        )
-        
-    except Exception as e:
-        logger.error(f"Error exporting CSV: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-async def _fetch_and_cache_facilities(
-    industry_type: Optional[str],
-    state: Optional[str],
-    year: int,
-    cache_key: str
-) -> List[IndustrialFacility]:
-    """
-    Fetch facilities from EPA API and cache them.
-    Converts raw EPA data to IndustrialFacility models.
-    """
-    logger.info(f"Fetching facilities from EPA API: {cache_key}")
+    # Apply filters
+    if region:
+        nodes = [n for n in nodes if n.region == region]
     
-    # Fetch data from EPA
-    all_data = await epa_fetcher.fetch_all_industrial_facilities(
-        year=year,
-        state=state,
-        industry_type=industry_type
+    if state:
+        nodes = [n for n in nodes if n.state == state]
+    
+    # Convert to GeoJSON
+    features = [n.to_geojson_feature() for n in nodes]
+    
+    return GeoJSONResponse(
+        features=features,
+        metadata={
+            "total_nodes": len(features),
+            "region_filter": region,
+            "state_filter": state
+        }
     )
-    
-    # Merge data from multiple EPA sources
-    merged_data = merge_facility_data(
-        all_data.get("ghgrp", []),
-        all_data.get("frs", []),
-        all_data.get("tri", []),
-        all_data.get("echo", [])
-    )
-    
-    # Convert to IndustrialFacility models
-    facilities = []
-    for data in merged_data:
-        try:
-            # Extract and normalize data
-            facility = IndustrialFacility(
-                facility_id=str(data.get("facility_id") or data.get("registry_id", "unknown")),
-                facility_name=data.get("facility_name", "Unknown Facility"),
-                coordinates=FacilityCoordinates(
-                    latitude=float(data.get("latitude", 0.0)),
-                    longitude=float(data.get("longitude", 0.0))
-                ),
-                city=data.get("city", "Unknown"),
-                state=data.get("state", "XX"),
-                zip_code=data.get("zip_code"),
-                county=data.get("county"),
-                epa_region=data.get("epa_region"),
-                naics_code=str(data.get("naics_code", "999999")),
-                industry_type=industry_type or "chemicals",  # Default
-                reporting_year=year,
-                emissions_by_gas=EmissionsByGasType(
-                    co2=float(data.get("co2_emissions", 0.0)),
-                    ch4=float(data.get("ch4_emissions", 0.0)),
-                    n2o=float(data.get("n2o_emissions", 0.0)),
-                    total_co2e=float(data.get("total_reported_emissions", 0.0) or data.get("ghg_quantity", 0.0))
-                ),
-                total_violations=int(data.get("informal_count", 0) + data.get("formal_count", 0)),
-                parent_company_name=data.get("parent_company_name"),
-                data_sources=["GHGRP", "FRS", "TRI", "ECHO"]
-            )
-            facilities.append(facility)
-        except Exception as e:
-            logger.warning(f"Error converting facility data: {e}")
-            continue
-    
-    # Cache the results
-    facilities_cache[cache_key] = facilities
-    cache_timestamp[cache_key] = datetime.utcnow()
-    
-    logger.info(f"Cached {len(facilities)} facilities for {cache_key}")
-    return facilities
 
 
-# ============================================================================
-# SAMPLE DATA ENDPOINT (for development/testing)
-# ============================================================================
-
-@app.get("/api/sample-data")
-async def get_sample_data():
-    """Generate sample facility data for demo/testing"""
-    import random
-    
-    # Sample industrial centers with realistic locations
-    sample_facilities_data = [
-        {
-            "name": "Gary Works Steel Mill",
-            "industry": "steel",
-            "city": "Gary",
-            "state": "IN",
-            "lat": 41.5934,
-            "lon": -87.3464,
-            "emissions": 1_800_000
-        },
-        {
-            "name": "USS Mon Valley Works",
-            "industry": "steel",
-            "city": "Pittsburgh",
-            "state": "PA",
-            "lat": 40.4406,
-            "lon": -79.9959,
-            "emissions": 1_500_000
-        },
-        {
-            "name": "Midlothian Cement Plant",
-            "industry": "cement",
-            "city": "Midlothian",
-            "state": "TX",
-            "lat": 32.4824,
-            "lon": -96.9945,
-            "emissions": 1_200_000
-        },
-        {
-            "name": "Lehigh Southwest Cement",
-            "industry": "cement",
-            "city": "Cupertino",
-            "state": "CA",
-            "lat": 37.3230,
-            "lon": -122.0322,
-            "emissions": 1_100_000
-        },
-        {
-            "name": "ExxonMobil Baytown Complex",
-            "industry": "chemicals",
-            "city": "Baytown",
-            "state": "TX",
-            "lat": 29.7355,
-            "lon": -94.9774,
-            "emissions": 950_000
-        },
-        {
-            "name": "Dow Chemical Louisiana",
-            "industry": "chemicals",
-            "city": "Plaquemine",
-            "state": "LA",
-            "lat": 30.2894,
-            "lon": -91.2373,
-            "emissions": 870_000
-        }
-    ]
-    
-    facilities = []
-    for idx, fac_data in enumerate(sample_facilities_data):
-        facility = IndustrialFacility(
-            facility_id=f"SAMPLE_{idx+1000}",
-            facility_name=fac_data["name"],
-            coordinates=FacilityCoordinates(
-                latitude=fac_data["lat"],
-                longitude=fac_data["lon"]
-            ),
-            city=fac_data["city"],
-            state=fac_data["state"],
-            naics_code="331110" if fac_data["industry"] == "steel" else ("327310" if fac_data["industry"] == "cement" else "325110"),
-            industry_type=fac_data["industry"],
-            reporting_year=DEFAULT_YEAR,
-            emissions_by_gas=EmissionsByGasType(
-                co2=fac_data["emissions"] * 0.95,
-                ch4=fac_data["emissions"] * 0.03,
-                n2o=fac_data["emissions"] * 0.02,
-                total_co2e=fac_data["emissions"]
-            ),
-            total_violations=random.randint(0, 5),
-            parent_company_name=fac_data["name"].split()[0] + " Corporation",
-            data_sources=["SAMPLE_DATA"]
-        )
-        facilities.append(facility)
-    
-    # Return as GeoJSON
+@app.get("/api/grid/regions")
+async def get_regions():
+    """Get list of available regions"""
+    regions = list(set(n.region for n in grid_nodes if n.region))
     return {
-        "type": "FeatureCollection",
-        "features": [f.to_geojson_feature() for f in facilities]
+        "regions": sorted(regions),
+        "total": len(regions)
+    }
+
+
+@app.get("/api/grid/states")
+async def get_states():
+    """Get list of available states"""
+    states = list(set(n.state for n in grid_nodes if n.state))
+    return {
+        "states": sorted(states),
+        "total": len(states)
+    }
+
+
+# ============================================================================
+# SITING EVALUATION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/siting/evaluate")
+async def evaluate_site(request: SitingRequest) -> SiteEvaluation:
+    """
+    Evaluate a site with custom criteria weights.
+    
+    Calculates composite siting score and provides ranking context.
+    """
+    try:
+        # Get the node
+        node = get_node_by_id(request.site_id)
+        
+        # Convert request to weights and demand profile
+        weights = request.to_weights()
+        demand_profile = request.to_demand_profile()
+        
+        # Evaluate the site
+        evaluation = siting_engine.evaluate_site(
+            node=node,
+            weights=weights,
+            demand_profile=demand_profile,
+            all_nodes=grid_nodes
+        )
+        
+        logger.info(
+            f"Evaluated site {request.site_id} ({node.name}): "
+            f"score={evaluation.score_breakdown.composite_score:.1f}"
+        )
+        
+        return evaluation
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error evaluating site: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/siting/alternatives")
+async def get_alternative_sites(
+    site_id: int,
+    weight_clean: float = Query(0.4, ge=0, le=1),
+    weight_transmission: float = Query(0.3, ge=0, le=1),
+    weight_reliability: float = Query(0.3, ge=0, le=1),
+    limit: int = Query(5, ge=1, le=20)
+):
+    """
+    Get top N alternative sites ranked by composite score.
+    
+    Uses same weights as reference site for fair comparison.
+    """
+    try:
+        # Validate weights
+        weights = SitingWeights(
+            weight_clean=weight_clean,
+            weight_transmission=weight_transmission,
+            weight_reliability=weight_reliability
+        )
+        weights.validate_sum()
+        
+        # Get reference node
+        reference_node = get_node_by_id(site_id)
+        
+        # Rank all sites
+        ranked = siting_engine.rank_sites(grid_nodes, weights)
+        
+        # Filter out reference site and take top N
+        alternatives = [
+            {
+                "id": node.id,
+                "name": node.name,
+                "composite_score": score,
+                "clean_gen": node.clean_gen,
+                "transmission_headroom": node.transmission_headroom,
+                "reliability": node.reliability,
+                "region": node.region,
+                "state": node.state
+            }
+            for node, score in ranked
+            if node.id != site_id
+        ][:limit]
+        
+        return {
+            "reference_site_id": site_id,
+            "reference_site_name": reference_node.name,
+            "alternatives": alternatives,
+            "weights_used": weights.dict()
+        }
+        
+    except ValueError as e:
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting alternatives: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/siting/rankings")
+async def get_site_rankings(
+    weight_clean: float = Query(0.4, ge=0, le=1),
+    weight_transmission: float = Query(0.3, ge=0, le=1),
+    weight_reliability: float = Query(0.3, ge=0, le=1),
+    limit: Optional[int] = Query(None, ge=1, le=50)
+):
+    """
+    Get all sites ranked by composite score.
+    
+    Useful for showing best overall sites across the country.
+    """
+    try:
+        # Validate weights
+        weights = SitingWeights(
+            weight_clean=weight_clean,
+            weight_transmission=weight_transmission,
+            weight_reliability=weight_reliability
+        )
+        weights.validate_sum()
+        
+        # Rank all sites
+        ranked = siting_engine.rank_sites(grid_nodes, weights)
+        
+        # Format results
+        rankings = [
+            {
+                "rank": i + 1,
+                "id": node.id,
+                "name": node.name,
+                "composite_score": score,
+                "clean_gen": node.clean_gen,
+                "transmission_headroom": node.transmission_headroom,
+                "reliability": node.reliability,
+                "region": node.region,
+                "state": node.state
+            }
+            for i, (node, score) in enumerate(ranked[:limit] if limit else ranked)
+        ]
+        
+        return {
+            "rankings": rankings,
+            "total_sites": len(grid_nodes),
+            "weights_used": weights.dict()
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error ranking sites: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# SCENARIO MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/api/siting/scenarios/save")
+async def save_scenario(evaluation: SiteEvaluation):
+    """
+    Save a site evaluation for later comparison.
+    
+    Stores evaluation in memory (for demo; use DB in production).
+    """
+    saved_scenarios.append(evaluation)
+    
+    logger.info(
+        f"Saved scenario for site {evaluation.site.id} "
+        f"(score={evaluation.score_breakdown.composite_score:.1f})"
+    )
+    
+    return {
+        "status": "saved",
+        "scenario_id": len(saved_scenarios) - 1,
+        "total_saved": len(saved_scenarios)
+    }
+
+
+@app.get("/api/siting/scenarios")
+async def get_saved_scenarios():
+    """Get all saved scenarios"""
+    return {
+        "scenarios": [s.dict() for s in saved_scenarios],
+        "total": len(saved_scenarios)
+    }
+
+
+@app.post("/api/siting/scenarios/compare")
+async def compare_scenarios(
+    scenario_ids: List[int],
+    scenario_name: str = "Comparison"
+):
+    """
+    Compare multiple saved scenarios.
+    
+    Returns comparison with best site and delta analysis.
+    """
+    if not scenario_ids:
+        raise HTTPException(status_code=400, detail="Must provide at least one scenario ID")
+    
+    # Validate IDs
+    if any(sid >= len(saved_scenarios) or sid < 0 for sid in scenario_ids):
+        raise HTTPException(status_code=404, detail="Invalid scenario ID")
+    
+    # Get evaluations
+    evaluations = [saved_scenarios[sid] for sid in scenario_ids]
+    
+    # Compare
+    comparison = siting_engine.compare_scenarios(evaluations, scenario_name)
+    
+    return comparison.dict()
+
+
+@app.delete("/api/siting/scenarios/clear")
+async def clear_saved_scenarios():
+    """Clear all saved scenarios"""
+    global saved_scenarios
+    count = len(saved_scenarios)
+    saved_scenarios = []
+    
+    return {
+        "status": "cleared",
+        "scenarios_deleted": count
     }
 
 
 # ============================================================================
 # MOUNT STATIC FILES AND RUN
 # ============================================================================
+
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -7,7 +7,7 @@ Calculates composite siting scores using weighted criteria and ranks alternative
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 import math
-from models_grid import (
+from models import (
     GridNode,
     SitingWeights,
     ScoreBreakdown,

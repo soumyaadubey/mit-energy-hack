@@ -1,182 +1,85 @@
 """
-Pydantic Models for Industrial Emissions Data
+Pydantic Models for Smart Grid Siting Framework
 
-Defines data structures for EPA facility data, emissions, compliance, and policy scenarios.
+Defines data structures for grid nodes, siting criteria, evaluations, and scenario comparisons.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
+import math
 
 
 # ============================================================================
-# FACILITY MODELS
+# GRID NODE MODELS
 # ============================================================================
 
-class FacilityCoordinates(BaseModel):
-    """Geographic coordinates for facility location"""
-    latitude: float
-    longitude: float
-    accuracy: Optional[str] = None  # e.g., "ADDRESS", "ROOFTOP", "APPROXIMATE"
+class GridNodeCoordinates(BaseModel):
+    """Geographic coordinates for grid node location"""
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
 
 
-class EmissionsByGasType(BaseModel):
-    """Emissions broken down by greenhouse gas type"""
-    co2: float = 0.0  # Carbon dioxide (metric tons)
-    ch4: float = 0.0  # Methane (metric tons)
-    n2o: float = 0.0  # Nitrous oxide (metric tons)
-    hfc: float = 0.0  # Hydrofluorocarbons (metric tons CO2e)
-    pfc: float = 0.0  # Perfluorocarbons (metric tons CO2e)
-    sf6: float = 0.0  # Sulfur hexafluoride (metric tons CO2e)
-    total_co2e: float = 0.0  # Total CO2 equivalent (metric tons)
+class NearbyProject(BaseModel):
+    """Nearby clean energy project"""
+    name: str
+    distance_km: float
+    capacity_mw: int
+    project_type: Literal["wind", "solar", "hydro", "nuclear", "battery"]
+    status: Literal["planned", "under_construction", "operational"] = "operational"
 
 
-class EmissionsBySource(BaseModel):
-    """Emissions broken down by source category within facility"""
-    source_category: str  # e.g., "Blast Furnace", "Cement Kiln", "Ethylene Cracker"
-    subpart_code: Optional[str] = None  # GHGRP subpart (C, H, X, Y, etc.)
-    emissions_mt_co2e: float = 0.0
-    description: Optional[str] = None
+class TransmissionLine(BaseModel):
+    """Nearby transmission infrastructure"""
+    line_id: str
+    distance_km: float
+    voltage_kv: int  # Kilovolts (e.g., 230, 345, 500, 765)
+    capacity_available_mw: Optional[float] = None
+    upgrade_cost_estimate_million: Optional[float] = None
 
 
-class ProductionData(BaseModel):
-    """Production volume data for carbon intensity calculations"""
-    product_type: str  # e.g., "Steel", "Cement", "Ethylene"
-    annual_production: float  # Annual production volume
-    production_unit: str  # e.g., "metric tons", "short tons"
-    carbon_intensity: Optional[float] = None  # tCO2e per unit product
-
-
-class ComplianceRecord(BaseModel):
-    """Environmental compliance and violation history"""
-    facility_id: str
-    program: str  # e.g., "CAA" (Clean Air Act), "CWA" (Clean Water Act)
-    informal_enforcement_count: int = 0
-    formal_enforcement_count: int = 0
-    violations_count: int = 0
-    last_inspection_date: Optional[datetime] = None
-    compliance_status: Optional[str] = None  # "In Compliance", "Violation", "Unknown"
-
-
-class ToxicRelease(BaseModel):
-    """TRI toxic release data for environmental justice analysis"""
-    chemical_name: str
-    cas_number: Optional[str] = None
-    total_releases_lbs: float = 0.0  # Total releases in pounds
-    air_releases_lbs: float = 0.0
-    water_releases_lbs: float = 0.0
-    land_releases_lbs: float = 0.0
-    carcinogen: bool = False
-
-
-class WaterUsage(BaseModel):
-    """Water usage and discharge data"""
-    annual_withdrawal_gallons: Optional[float] = None
-    annual_discharge_gallons: Optional[float] = None
-    water_source: Optional[str] = None  # e.g., "Municipal", "Surface Water", "Groundwater"
-    discharge_permit_number: Optional[str] = None
-
-
-class IndustrialFacility(BaseModel):
+class GridNode(BaseModel):
     """
-    Complete industrial facility data combining all EPA sources.
+    Grid node representing a potential site for electro-intensive load.
     
-    Represents the 18 key EPA data attributes for legislative visualization.
+    Contains three core metrics (0-100 scale):
+    - clean_gen: Proximity to renewable generation resources
+    - transmission_headroom: Available transmission capacity
+    - reliability: Grid resilience and outage frequency score
     """
-    # 1. Facility Identification
-    facility_id: str = Field(..., description="Primary facility identifier (Registry ID or GHGRP ID)")
-    facility_name: str
+    id: int
+    name: str
+    coordinates: GridNodeCoordinates
     
-    # 2. Location & Coordinates (FRS data)
-    coordinates: FacilityCoordinates
-    street_address: Optional[str] = None
-    city: str
-    state: str  # Two-letter code
-    zip_code: Optional[str] = None
-    county: Optional[str] = None
-    epa_region: Optional[int] = None  # EPA Region 1-10
+    # Core siting metrics (0-100 scale)
+    clean_gen: float = Field(..., ge=0, le=100, description="Clean generation density score")
+    transmission_headroom: float = Field(..., ge=0, le=100, description="Transmission capacity headroom")
+    reliability: float = Field(..., ge=0, le=100, description="Grid reliability/resilience score")
     
-    # 3. Industry Classification (NAICS)
-    naics_code: str
-    industry_type: Literal["steel", "cement", "chemicals"]
-    industry_sector_description: Optional[str] = None
+    # Optional enrichment data
+    nearby_projects: List[NearbyProject] = []
+    transmission_lines: List[TransmissionLine] = []
     
-    # 4. Emissions Data (GHGRP)
-    reporting_year: int
-    emissions_by_gas: EmissionsByGasType
-    
-    # 5. Emissions by Source Category
-    emissions_by_source: List[EmissionsBySource] = []
-    
-    # 6. Multi-Year Trends
-    historical_emissions: List[Dict[int, float]] = []  # {year: total_co2e}
-    
-    # 7. Toxic Releases (TRI)
-    toxic_releases: List[ToxicRelease] = []
-    total_toxic_releases_lbs: float = 0.0
-    
-    # 8. Air Quality Impact (placeholder for AQS integration)
-    nearest_aqs_station_id: Optional[str] = None
-    distance_to_aqs_miles: Optional[float] = None
-    
-    # 9. Compliance & Enforcement (ECHO)
-    compliance_records: List[ComplianceRecord] = []
-    total_violations: int = 0
-    enforcement_actions: int = 0
-    
-    # 10. Operational Status
-    operational_status: str = "Active"  # "Active", "Closed", "Under Construction", "Seasonal"
-    permit_status: Optional[str] = None
-    
-    # 11. Waste Data (RCRA - placeholder)
-    hazardous_waste_generated_tons: Optional[float] = None
-    
-    # 12. Water Usage (ICIS/PCS)
-    water_usage: Optional[WaterUsage] = None
-    
-    # 13. Geospatial Boundaries (optional polygon)
-    facility_boundary_geojson: Optional[Dict[str, Any]] = None
-    
-    # 14. Energy Use
-    annual_energy_use_mmbtu: Optional[float] = None  # Million BTU
-    electricity_use_mwh: Optional[float] = None
-    
-    # 15. Subpart-Specific Data
-    ghgrp_subparts: List[str] = []  # e.g., ["C", "D"] for steel facilities
-    
-    # 16. Parent Company
-    parent_company_name: Optional[str] = None
-    parent_company_id: Optional[str] = None
-    
-    # 17. Production Volume & Carbon Intensity
-    production_data: List[ProductionData] = []
-    
-    # 18. Additional Metadata
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
-    data_sources: List[str] = []  # e.g., ["GHGRP", "FRS", "TRI", "ECHO"]
-    data_quality_flags: List[str] = []  # Any data quality issues
+    # Metadata
+    region: Optional[str] = None  # e.g., "Pacific Northwest", "ERCOT", "PJM"
+    state: Optional[str] = None
+    balancing_authority: Optional[str] = None
     
     def to_geojson_feature(self) -> Dict[str, Any]:
-        """Convert facility to GeoJSON feature for Mapbox visualization"""
+        """Convert grid node to GeoJSON feature for Mapbox visualization"""
         return {
             "type": "Feature",
-            "id": self.facility_id,
+            "id": self.id,
             "properties": {
-                "facility_id": self.facility_id,
-                "name": self.facility_name,
-                "industry": self.industry_type,
-                "city": self.city,
+                "id": self.id,
+                "name": self.name,
+                "clean_gen": self.clean_gen,
+                "transmission_headroom": self.transmission_headroom,
+                "reliability": self.reliability,
+                "region": self.region,
                 "state": self.state,
-                "naics": self.naics_code,
-                "total_emissions": self.emissions_by_gas.total_co2e,
-                "co2": self.emissions_by_gas.co2,
-                "ch4": self.emissions_by_gas.ch4,
-                "n2o": self.emissions_by_gas.n2o,
-                "year": self.reporting_year,
-                "violations": self.total_violations,
-                "toxic_releases": self.total_toxic_releases_lbs,
-                "parent_company": self.parent_company_name,
-                "operational_status": self.operational_status,
+                "nearby_projects_count": len(self.nearby_projects),
+                "transmission_lines_count": len(self.transmission_lines),
             },
             "geometry": {
                 "type": "Point",
@@ -189,114 +92,144 @@ class IndustrialFacility(BaseModel):
 
 
 # ============================================================================
-# POLICY SIMULATION MODELS
+# SITING CRITERIA MODELS
 # ============================================================================
 
-class CarbonTaxPolicy(BaseModel):
-    """Carbon tax policy parameters"""
-    tax_rate_per_ton_co2e: float = 0.0  # $/metric ton CO2e
-    tax_type: Literal["flat", "progressive", "cap_and_trade"] = "flat"
-    exemptions: List[str] = []  # NAICS codes exempt from tax
-    phase_in_years: int = 1  # Years to phase in full tax
+class SitingWeights(BaseModel):
+    """
+    Weight allocation for siting criteria.
+    
+    Must sum to exactly 1.0 for valid composite score calculation.
+    """
+    weight_clean: float = Field(0.4, ge=0, le=1, description="Weight for clean generation proximity")
+    weight_transmission: float = Field(0.3, ge=0, le=1, description="Weight for transmission headroom")
+    weight_reliability: float = Field(0.3, ge=0, le=1, description="Weight for grid reliability")
+    
+    @field_validator('weight_clean', 'weight_transmission', 'weight_reliability')
+    @classmethod
+    def validate_weight_range(cls, v: float) -> float:
+        if not (0 <= v <= 1):
+            raise ValueError("Weight must be between 0 and 1")
+        return v
+    
+    def validate_sum(self) -> None:
+        """Validate that weights sum to 1.0 (with floating-point tolerance)"""
+        total = self.weight_clean + self.weight_transmission + self.weight_reliability
+        if not math.isclose(total, 1.0, rel_tol=1e-9):
+            raise ValueError(f"Weights must sum to 1.0, got {total:.10f}")
 
 
-class EmissionsCap(BaseModel):
-    """Emissions cap or reduction target"""
-    target_year: int
-    reduction_percentage: float  # Percent reduction from baseline
-    baseline_year: int = 2022
-    enforcement_mechanism: Literal["penalty", "shutdown", "offset"] = "penalty"
+class DemandProfile(BaseModel):
+    """Profile of the electro-intensive load being sited"""
+    demand_type: Literal["data_center", "electrolyzer", "ev_hub", "hydrogen_plant", "ai_compute"] = "data_center"
+    size_mw: int = Field(..., ge=10, le=2000, description="Load size in megawatts")
+    load_factor: float = Field(0.85, ge=0, le=1, description="Capacity factor (fraction of time at full load)")
+    duration_years: int = Field(20, ge=1, le=50, description="Expected operational lifetime")
 
 
-class FilteringRequirement(BaseModel):
-    """Required emissions filtering/capture technology"""
-    technology_type: str  # e.g., "Carbon Capture", "Scrubber", "Catalytic Converter"
-    capture_efficiency: float  # Percent of emissions captured
-    capital_cost_per_facility: float  # One-time installation cost
-    annual_operating_cost: float  # Annual operating cost
-    applicable_industries: List[str] = []  # Which industries must comply
+# ============================================================================
+# EVALUATION MODELS
+# ============================================================================
+
+class ScoreBreakdown(BaseModel):
+    """Detailed breakdown of composite score components"""
+    clean_gen_score: float
+    clean_gen_contribution: float  # Weighted contribution to composite
+    
+    transmission_score: float
+    transmission_contribution: float
+    
+    reliability_score: float
+    reliability_contribution: float
+    
+    composite_score: float
+    
+    weights_used: SitingWeights
 
 
-class PolicyScenario(BaseModel):
-    """Complete policy scenario for simulation"""
+class SiteEvaluation(BaseModel):
+    """
+    Complete evaluation result for a grid node site.
+    
+    Includes composite score, breakdown, and contextual information.
+    """
+    site: GridNode
+    weights: SitingWeights
+    demand_profile: Optional[DemandProfile] = None
+    
+    score_breakdown: ScoreBreakdown
+    
+    # Ranking context
+    percentile_rank: Optional[float] = None  # Where this site ranks (0-100)
+    alternative_sites: List[Dict[str, Any]] = []  # Top N alternatives
+    
+    # Metadata
+    evaluated_at: datetime = Field(default_factory=datetime.utcnow)
+    evaluation_notes: List[str] = []
+
+
+class ScenarioComparison(BaseModel):
+    """
+    Comparison of multiple site evaluations.
+    
+    Used in the comparison modal on Siting Framework page.
+    """
     scenario_name: str
-    description: Optional[str] = None
+    scenarios: List[SiteEvaluation]
     
-    # Policy components
-    carbon_tax: Optional[CarbonTaxPolicy] = None
-    emissions_cap: Optional[EmissionsCap] = None
-    filtering_requirements: List[FilteringRequirement] = []
+    # Comparison insights
+    best_site_id: int
+    score_range: tuple[float, float]  # (min, max)
     
-    # Additional parameters
-    enforcement_level: Literal["low", "medium", "high"] = "medium"
-    phase_in_period_years: int = 5
+    # Delta analysis
+    score_deltas: Dict[int, float]  # {site_id: delta_from_best}
     
-    # Target facilities
-    target_states: List[str] = []  # Empty = all states
-    target_industries: List[str] = []  # Empty = all industries
-    target_naics_codes: List[str] = []
-
-
-class PolicyImpactResult(BaseModel):
-    """Results from policy simulation"""
-    scenario: PolicyScenario
-    
-    # Emissions impact
-    baseline_emissions_mt_co2e: float
-    projected_emissions_mt_co2e: float
-    emissions_reduction_mt_co2e: float
-    emissions_reduction_percentage: float
-    
-    # Economic impact
-    total_carbon_tax_revenue: float  # Annual revenue from carbon tax
-    total_compliance_cost: float  # Cost to industry for compliance
-    facilities_affected: int
-    
-    # By industry breakdown
-    impact_by_industry: Dict[str, Dict[str, float]] = {}  # {industry: {emissions_reduction, cost, etc}}
-    
-    # By state breakdown
-    impact_by_state: Dict[str, Dict[str, float]] = {}
-    
-    # Timeline projection
-    emissions_trajectory: List[Dict[str, Any]] = []  # Year-by-year projections
-    
-    # Facility-level impacts
-    facility_impacts: List[Dict[str, Any]] = []  # Per-facility cost and emission changes
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # ============================================================================
 # API REQUEST/RESPONSE MODELS
 # ============================================================================
 
-class FacilityQuery(BaseModel):
-    """Query parameters for facility search"""
-    industry_type: Optional[Literal["steel", "cement", "chemicals"]] = None
-    state: Optional[str] = None
-    epa_region: Optional[int] = None
-    min_emissions: Optional[float] = None  # Minimum total CO2e
-    max_emissions: Optional[float] = None
-    year: int = 2022
-    parent_company: Optional[str] = None
-    compliance_status: Optional[str] = None
-    limit: int = 1000
-    offset: int = 0
+class SitingRequest(BaseModel):
+    """Request to evaluate a site with specific criteria"""
+    site_id: int
+    weight_clean: float = Field(0.4, ge=0, le=1)
+    weight_transmission: float = Field(0.3, ge=0, le=1)
+    weight_reliability: float = Field(0.3, ge=0, le=1)
+    demand_size_mw: Optional[int] = Field(None, ge=10, le=2000)
+    demand_type: Optional[Literal["data_center", "electrolyzer", "ev_hub", "hydrogen_plant", "ai_compute"]] = None
+    
+    def to_weights(self) -> SitingWeights:
+        """Convert to SitingWeights model with validation"""
+        weights = SitingWeights(
+            weight_clean=self.weight_clean,
+            weight_transmission=self.weight_transmission,
+            weight_reliability=self.weight_reliability
+        )
+        weights.validate_sum()
+        return weights
+    
+    def to_demand_profile(self) -> Optional[DemandProfile]:
+        """Convert to DemandProfile if demand info provided"""
+        if self.demand_size_mw and self.demand_type:
+            return DemandProfile(
+                demand_type=self.demand_type,
+                size_mw=self.demand_size_mw
+            )
+        return None
 
 
-class AggregatedEmissions(BaseModel):
-    """Aggregated emissions data for choropleth visualization"""
-    aggregation_level: Literal["state", "county", "epa_region"]
-    region_id: str  # State code, county FIPS, or EPA region number
-    region_name: str
-    total_facilities: int
-    total_emissions_mt_co2e: float
-    facilities_by_industry: Dict[str, int]  # {industry: count}
-    emissions_by_industry: Dict[str, float]  # {industry: emissions}
+class AlternativeSitesRequest(BaseModel):
+    """Request for alternative sites ranked by score"""
+    site_id: int  # Reference site
+    weights: SitingWeights
+    limit: int = Field(5, ge=1, le=20, description="Number of alternatives to return")
+    exclude_self: bool = Field(True, description="Exclude the reference site from results")
 
 
-class FacilityDetail(BaseModel):
-    """Detailed facility information for popup/detail view"""
-    facility: IndustrialFacility
-    nearby_facilities: List[IndustrialFacility] = []  # Within 50 miles
-    emissions_trend_chart_data: Dict[str, List] = {}  # For charting
-    compliance_timeline: List[Dict[str, Any]] = []
+class GeoJSONResponse(BaseModel):
+    """GeoJSON FeatureCollection response"""
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: List[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = None

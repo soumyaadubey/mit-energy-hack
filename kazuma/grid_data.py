@@ -6,7 +6,7 @@ clean generation, transmission headroom, and reliability scores.
 """
 
 from typing import List
-from models_grid import GridNode, GridNodeCoordinates, NearbyProject, TransmissionLine
+from models import GridNode, GridNodeCoordinates, NearbyProject, TransmissionLine
 
 
 def generate_mock_grid_nodes() -> List[GridNode]:
