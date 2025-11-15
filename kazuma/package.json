@@ -1,0 +1,19 @@
+{
+  "name": "cache",
+  "version": "1.0.0",
+  "description": "A FastAPI-based demo tool for legislators to visualize how energy policies impact emissions, costs, and usage at the building level. Built for hackathons with a focus on fast, data-driven insights.",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "tailwindcss -i ./static/input.css -o ./static/output.css --minify",
+    "watch:css": "tailwindcss -i ./static/input.css -o ./static/output.css --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18"
+  }
+}

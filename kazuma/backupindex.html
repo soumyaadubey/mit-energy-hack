@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energize - Energy Policy Visualization</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/static/output.css" rel="stylesheet">
+</head>
+<body class="bg-background font-sans antialiased">
+    <!-- Header -->
+    <header class="border-b bg-card">
+        <div class="px-6 py-4">
+            <h1 class="text-2xl font-semibold text-foreground">Energize</h1>
+            <p class="text-sm text-muted-foreground mt-1">
+                Model building-level energy scenarios and visualize impacts by district
+            </p>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="flex h-[calc(100vh-97px)]">
+        <!-- Sidebar -->
+        <aside class="w-80 border-r bg-card">
+            <div class="p-6 flex flex-col h-full">
+                <!-- Scrollable content -->
+                <div class="flex-1 overflow-y-auto space-y-6">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground mb-4">Energy Scenario Parameters</h2>
+                    </div>
+
+                    <!-- Electric Vehicles -->
+                    <div class="space-y-2">
+                        <label for="num-evs" class="text-sm font-medium text-foreground">Electric Vehicles (EVs)</label>
+                        <input
+                            type="range"
+                            id="num-evs"
+                            min="0"
+                            max="10"
+                            value="0"
+                            step="1"
+                            class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                        >
+                        <span class="text-sm text-muted-foreground" id="num-evs-value">0</span>
+                    </div>
+
+                    <!-- Solar PV Capacity -->
+                    <div class="space-y-2">
+                        <label for="pv-capacity" class="text-sm font-medium text-foreground">Solar PV Capacity (kW)</label>
+                        <input
+                            type="range"
+                            id="pv-capacity"
+                            min="0"
+                            max="20"
+                            value="0"
+                            step="0.5"
+                            class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                        >
+                        <span class="text-sm text-muted-foreground" id="pv-capacity-value">0</span>
+                    </div>
+
+                    <!-- Heat Pumps -->
+                    <div class="space-y-2">
+                        <label for="num-heat-pumps" class="text-sm font-medium text-foreground">Heat Pumps</label>
+                        <input
+                            type="range"
+                            id="num-heat-pumps"
+                            min="0"
+                            max="5"
+                            value="0"
+                            step="1"
+                            class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                        >
+                        <span class="text-sm text-muted-foreground" id="num-heat-pumps-value">0</span>
+                    </div>
+
+                    <!-- Insulation Level -->
+                    <div class="space-y-2">
+                        <label for="insulation-level" class="text-sm font-medium text-foreground">Insulation Level</label>
+                        <select
+                            id="insulation-level"
+                            class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        >
+                            <option value="standard">Standard</option>
+                            <option value="improved">Improved</option>
+                            <option value="high">High Performance</option>
+                        </select>
+                    </div>
+
+                    <!-- Building Type -->
+                    <div class="space-y-2">
+                        <label for="building-type" class="text-sm font-medium text-foreground">Building Type</label>
+                        <select
+                            id="building-type"
+                            class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        >
+                            <option value="residential">Residential</option>
+                            <option value="commercial">Commercial</option>
+                        </select>
+                    </div>
+
+                    <!-- Square Footage -->
+                    <div class="space-y-2">
+                        <label for="square-footage" class="text-sm font-medium text-foreground">Square Footage</label>
+                        <input
+                            type="number"
+                            id="square-footage"
+                            value="2000"
+                            min="500"
+                            max="50000"
+                            step="100"
+                            class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        >
+                    </div>
+
+                    <!-- Calculate Button -->
+                    <button
+                        id="calculate-btn"
+                        class="w-full px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Calculate Impact
+                    </button>
+
+                    <!-- Loading -->
+                    <div id="loading" class="hidden text-center py-4">
+                        <p class="text-sm text-muted-foreground">⏳ Calculating...</p>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="results" class="hidden space-y-4">
+                        <h3 class="text-base font-semibold text-foreground">Results</h3>
+                        <div class="rounded-lg border bg-card p-4 space-y-3">
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-muted-foreground">Annual Energy Usage</span>
+                                <span class="font-medium text-foreground" id="result-usage">-</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm border-t pt-3">
+                                <span class="text-muted-foreground">Annual Cost</span>
+                                <span class="font-medium text-foreground" id="result-cost">-</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm border-t pt-3">
+                                <span class="text-muted-foreground">Annual Emissions</span>
+                                <span class="font-medium text-foreground" id="result-emissions">-</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm border-t pt-3">
+                                <span class="text-muted-foreground">Peak Demand</span>
+                                <span class="font-medium text-foreground" id="result-peak">-</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm border-t pt-3">
+                                <span class="text-muted-foreground">Renewable %</span>
+                                <span class="font-medium text-foreground" id="result-renewable">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Debug panel (now inside scrollable area) -->
+                    <div>
+                        <div id="integration-panel" class="rounded-lg border p-3 bg-card">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-semibold text-foreground">Integrations & Debug</h3>
+                                <button
+                                    id="integration-toggle"
+                                    aria-expanded="false"
+                                    class="text-xs text-muted-foreground px-2 py-1 rounded hover:bg-muted"
+                                    title="Toggle"
+                                >+</button>
+                            </div>
+                            <div id="integration-status" class="hidden text-sm text-muted-foreground mt-2 space-y-1">
+                                <div>Mapbox Token: <span id="mapbox-token-status">checking…</span></div>
+                                <div>Map Loaded: <span id="map-loaded-status">no</span></div>
+                                <div>Palmetto API: <span id="palmetto-status">checking…</span></div>
+                                <div>Server Health: <span id="server-health-status">checking…</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Map Container -->
+        <main class="flex-1 relative bg-muted">
+            <div id="map" class="w-full h-full"></div>
+
+            <!-- Legend -->
+            <div class="absolute bottom-4 right-4 rounded-lg border bg-card shadow-lg p-4">
+                <h3 class="text-sm font-semibold text-foreground mb-3">Emissions by District</h3>
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 text-xs">
+                        <div class="w-4 h-4 rounded" style="background: #22c55e;"></div>
+                        <span class="text-muted-foreground">Low (&lt; 5,000 kg CO₂)</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <div class="w-4 h-4 rounded" style="background: #eab308;"></div>
+                        <span class="text-muted-foreground">Medium (5,000-10,000)</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <div class="w-4 h-4 rounded" style="background: #f97316;"></div>
+                        <span class="text-muted-foreground">High (10,000-15,000)</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <div class="w-4 h-4 rounded" style="background: #ef4444;"></div>
+                        <span class="text-muted-foreground">Very High (&gt; 15,000)</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Initialize map
+        let map;
+        let mapboxToken = '';
+        let mapLoaded = false;
+
+        // Fetch config and initialize
+        async function init() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                mapboxToken = config.mapbox_token || 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example';
+
+                mapboxgl.accessToken = mapboxToken;
+                map = new mapboxgl.Map({
+                    container: 'map',
+                    style: 'mapbox://styles/mapbox/light-v11',
+                    center: config.default_center || [-80.8431, 35.2271],
+                    zoom: config.default_zoom || 10
+                });
+
+                map.on('load', () => {
+                    mapLoaded = true;
+                    loadSampleData();
+                    updateIntegrationStatus();
+                    document.getElementById('map-loaded-status').textContent = 'yes';
+                });
+            } catch (error) {
+                console.error('Error initializing:', error);
+                // Fallback if API is unavailable
+                mapboxgl.accessToken = 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example';
+                map = new mapboxgl.Map({
+                    container: 'map',
+                    style: 'mapbox://styles/mapbox/light-v11',
+                    center: [-80.8431, 35.2271],
+                    zoom: 10
+                });
+                map.on('load', () => {
+                    mapLoaded = true;
+                    updateIntegrationStatus();
+                    document.getElementById('map-loaded-status').textContent = 'yes';
+                });
+            }
+            // Initial integration status check even if map hasn't loaded yet
+            updateIntegrationStatus();
+        }
+
+        // Load sample district data
+        async function loadSampleData() {
+            try {
+                const response = await fetch('/api/sample-data');
+                const data = await response.json();
+
+                // Create GeoJSON features for districts
+                const features = data.data.map((item, index) => ({
+                    type: 'Feature',
+                    properties: {
+                        district: item.district.id,
+                        name: item.district.name,
+                        emissions: item.metrics.annual_emissions_kg_co2,
+                        cost: item.metrics.annual_cost_usd,
+                        usage: item.metrics.annual_kwh_usage
+                    },
+                    geometry: {
+                        type: 'Point',
+                        coordinates: item.district.center
+                    }
+                }));
+
+                // Add source
+                if (!map.getSource('districts')) {
+                    map.addSource('districts', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: features
+                        }
+                    });
+
+                    // Add circle layer with color based on emissions
+                    map.addLayer({
+                        id: 'district-circles',
+                        type: 'circle',
+                        source: 'districts',
+                        paint: {
+                            'circle-radius': 30,
+                            'circle-color': [
+                                'interpolate',
+                                ['linear'],
+                                ['get', 'emissions'],
+                                0, '#22c55e',
+                                5000, '#eab308',
+                                10000, '#f97316',
+                                15000, '#ef4444'
+                            ],
+                            'circle-opacity': 0.7,
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    });
+
+                    // Add labels
+                    map.addLayer({
+                        id: 'district-labels',
+                        type: 'symbol',
+                        source: 'districts',
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-size': 12,
+                            'text-offset': [0, 2.5]
+                        },
+                        paint: {
+                            'text-color': '#333',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 2
+                        }
+                    });
+
+                    // Add popup on click
+                    map.on('click', 'district-circles', (e) => {
+                        const props = e.features[0].properties;
+                        new mapboxgl.Popup()
+                            .setLngLat(e.lngLat)
+                            .setHTML(`
+                                <h3>${props.name}</h3>
+                                <p><strong>Emissions:</strong> ${props.emissions.toLocaleString()} kg CO₂/yr</p>
+                                <p><strong>Cost:</strong> $${props.cost.toLocaleString()}/yr</p>
+                                <p><strong>Usage:</strong> ${props.usage.toLocaleString()} kWh/yr</p>
+                            `)
+                            .addTo(map);
+                    });
+
+                    map.on('mouseenter', 'district-circles', () => {
+                        map.getCanvas().style.cursor = 'pointer';
+                    });
+
+                    map.on('mouseleave', 'district-circles', () => {
+                        map.getCanvas().style.cursor = '';
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading sample data:', error);
+            }
+        }
+
+        // Fetch integration status from server and update UI
+        async function updateIntegrationStatus() {
+            try {
+                const [intRes, healthRes] = await Promise.all([
+                    fetch('/api/integration-status'),
+                    fetch('/health')
+                ]);
+
+                if (intRes.ok) {
+                    const intData = await intRes.json();
+                    document.getElementById('mapbox-token-status').textContent =
+                        intData.mapbox_configured ? 'present' : 'missing';
+                    document.getElementById('palmetto-status').textContent =
+                        intData.palmetto_base
+                            ? (intData.palmetto_reachable
+                                ? `reachable (${intData.palmetto_base})`
+                                : `unreachable (${intData.palmetto_base})`)
+                            : 'not configured';
+                } else {
+                    document.getElementById('mapbox-token-status').textContent = 'error';
+                    document.getElementById('palmetto-status').textContent = 'error';
+                }
+
+                if (healthRes.ok) {
+                    const health = await healthRes.json();
+                    document.getElementById('server-health-status').textContent =
+                        (health.status || 'unknown');
+                } else {
+                    document.getElementById('server-health-status').textContent = 'unhealthy';
+                }
+
+                // Map loaded status (client-side)
+                document.getElementById('map-loaded-status').textContent = mapLoaded ? 'yes' : 'no';
+            } catch (err) {
+                console.error('Error fetching integration status:', err);
+                document.getElementById('mapbox-token-status').textContent = 'error';
+                document.getElementById('palmetto-status').textContent = 'error';
+                document.getElementById('server-health-status').textContent = 'error';
+            }
+        }
+
+        // Toggle bottom integration panel expansion
+        function toggleIntegrationPanel() {
+            const content = document.getElementById('integration-status');
+            const btn = document.getElementById('integration-toggle');
+            const isHidden = content.classList.contains('hidden');
+            if (isHidden) {
+                content.classList.remove('hidden');
+                btn.textContent = '−';
+                btn.setAttribute('aria-expanded', 'true');
+                // Refresh status when opening
+                updateIntegrationStatus();
+            } else {
+                content.classList.add('hidden');
+                btn.textContent = '+';
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        }
+
+        // Hook up toggle button & inputs after DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const t = document.getElementById('integration-toggle');
+            if (t) t.addEventListener('click', toggleIntegrationPanel);
+
+            document.getElementById('num-evs').addEventListener('input', (e) => {
+                document.getElementById('num-evs-value').textContent = e.target.value;
+            });
+
+            document.getElementById('pv-capacity').addEventListener('input', (e) => {
+                document.getElementById('pv-capacity-value').textContent = e.target.value;
+            });
+
+            document.getElementById('num-heat-pumps').addEventListener('input', (e) => {
+                document.getElementById('num-heat-pumps-value').textContent = e.target.value;
+            });
+
+            document.getElementById('calculate-btn').addEventListener('click', async () => {
+                const loading = document.getElementById('loading');
+                const results = document.getElementById('results');
+                const button = document.getElementById('calculate-btn');
+
+                // Show loading
+                loading.classList.remove('hidden');
+                results.classList.add('hidden');
+                button.disabled = true;
+
+                // Gather parameters
+                const scenario = {
+                    num_evs: parseInt(document.getElementById('num-evs').value),
+                    pv_capacity_kw: parseFloat(document.getElementById('pv-capacity').value),
+                    num_heat_pumps: parseInt(document.getElementById('num-heat-pumps').value),
+                    insulation_level: document.getElementById('insulation-level').value,
+                    building_type: document.getElementById('building-type').value,
+                    square_footage: parseInt(document.getElementById('square-footage').value)
+                };
+
+                try {
+                    const response = await fetch('/api/calculate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ scenario })
+                    });
+
+                    const result = await response.json();
+
+                    // Display results
+                    document.getElementById('result-usage').textContent =
+                        `${result.annual_kwh_usage.toLocaleString()} kWh/yr`;
+                    document.getElementById('result-cost').textContent =
+                        `$${result.annual_cost_usd.toLocaleString()}/yr`;
+                    document.getElementById('result-emissions').textContent =
+                        `${result.annual_emissions_kg_co2.toLocaleString()} kg CO₂/yr`;
+                    document.getElementById('result-peak').textContent =
+                        `${result.peak_demand_kw.toLocaleString()} kW`;
+                    document.getElementById('result-renewable').textContent =
+                        `${result.renewable_percentage}%`;
+
+                    results.classList.remove('hidden');
+                } catch (error) {
+                    console.error('Error calculating:', error);
+                    alert('Error calculating scenario. Please try again.');
+                } finally {
+                    loading.classList.add('hidden');
+                    button.disabled = false;
+                }
+            });
+
+            // Initialize on load
+            init();
+        });
+    </script>
+</body>
+</html>
