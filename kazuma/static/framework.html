@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Grid Siting - Framework</title>
+    
+    <!-- Chart.js for radar charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <link href="/static/output.css" rel="stylesheet">
+    
+    <style>
+        .slider-container { margin: 16px 0; }
+        .slider { width: 100%; }
+        .chart-container { position: relative; height: 300px; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="px-6 py-4 flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Siting Framework</h1>
+                    <p class="text-sm text-gray-600 mt-1">Optimization Sandbox</p>
+                </div>
+                <a href="/" class="text-blue-600 hover:text-blue-700 font-medium text-sm">
+                    ← Back to Map View
+                </a>
+            </div>
+        </header>
+        
+        <!-- Main Content -->
+        <div class="flex-1 flex">
+            <!-- Left Panel - Inputs -->
+            <div class="w-96 bg-white border-r overflow-y-auto">
+                <div class="p-6 space-y-6">
+                    <!-- Selected Location -->
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Selected Location</h2>
+                        <div id="selected-location" class="bg-blue-50 p-4 rounded-lg">
+                            <div class="text-sm text-gray-600">Loading...</div>
+                        </div>
+                        
+                        <!-- Manual Input (optional) -->
+                        <button id="manual-input-toggle" class="mt-2 text-sm text-blue-600 hover:text-blue-700">
+                            Or enter coordinates manually
+                        </button>
+                        <div id="manual-input" class="mt-2 hidden space-y-2">
+                            <input type="number" id="manual-lat" placeholder="Latitude" step="0.001" class="w-full px-3 py-2 border rounded text-sm">
+                            <input type="number" id="manual-lon" placeholder="Longitude" step="0.001" class="w-full px-3 py-2 border rounded text-sm">
+                        </div>
+                    </div>
+                    
+                    <!-- Criteria Weights -->
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Criteria Weights</h2>
+                        <p class="text-xs text-gray-600 mb-4">Adjust weights to match your priorities (must sum to 1.0)</p>
+                        
+                        <!-- Clean Generation Weight -->
+                        <div class="slider-container">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-sm font-medium text-gray-700">Clean Generation</label>
+                                <span id="weight-clean-value" class="text-sm font-semibold text-green-600">0.40</span>
+                            </div>
+                            <input type="range" id="weight-clean" min="0" max="1" step="0.05" value="0.4" class="slider w-full">
+                        </div>
+                        
+                        <!-- Transmission Weight -->
+                        <div class="slider-container">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-sm font-medium text-gray-700">Transmission Headroom</label>
+                                <span id="weight-transmission-value" class="text-sm font-semibold text-blue-600">0.30</span>
+                            </div>
+                            <input type="range" id="weight-transmission" min="0" max="1" step="0.05" value="0.3" class="slider w-full">
+                        </div>
+                        
+                        <!-- Reliability Weight -->
+                        <div class="slider-container">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-sm font-medium text-gray-700">Grid Reliability</label>
+                                <span id="weight-reliability-value" class="text-sm font-semibold text-purple-600">0.30</span>
+                            </div>
+                            <input type="range" id="weight-reliability" min="0" max="1" step="0.05" value="0.3" class="slider w-full">
+                        </div>
+                        
+                        <!-- Sum Validation -->
+                        <div id="weight-sum-indicator" class="mt-3 p-2 rounded text-sm text-center">
+                            Sum: <span id="weight-sum">1.00</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Demand Size Selector -->
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Demand Profile</h2>
+                        
+                        <div class="space-y-2">
+                            <label class="text-sm font-medium text-gray-700">Load Type</label>
+                            <select id="demand-type" class="w-full px-3 py-2 border rounded">
+                                <option value="data_center">Data Center</option>
+                                <option value="electrolyzer">Electrolyzer</option>
+                                <option value="ev_hub">EV Charging Hub</option>
+                                <option value="hydrogen_plant">Hydrogen Plant</option>
+                                <option value="ai_compute">AI Compute Hub</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mt-3 space-y-2">
+                            <label class="text-sm font-medium text-gray-700">Load Size</label>
+                            <select id="demand-size" class="w-full px-3 py-2 border rounded">
+                                <option value="10">10 MW (Test Load)</option>
+                                <option value="50" selected>50 MW (Small Data Center)</option>
+                                <option value="200">200 MW (Large Data Center)</option>
+                                <option value="500">500 MW (AI Compute Hub)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Evaluate Button -->
+                    <button id="evaluate-btn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 font-semibold">
+                        Evaluate Site
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Right Panel - Results -->
+            <div class="flex-1 p-6 overflow-y-auto">
+                <div id="results-container" class="hidden">
+                    <!-- Composite Score Display -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Composite Siting Score</h2>
+                        <div class="text-center">
+                            <div id="composite-score" class="text-6xl font-bold text-blue-600 mb-2">--</div>
+                            <div id="percentile-rank" class="text-sm text-gray-600">--</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Category Breakdown -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Category Breakdown</h2>
+                        <div class="space-y-4" id="breakdown-details">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    
+                    <!-- Visualization Chart -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Siting Criteria Visualization</h2>
+                        <div class="chart-container">
+                            <canvas id="criteria-chart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Evaluation Notes -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Evaluation Notes</h2>
+                        <ul id="evaluation-notes" class="space-y-2 text-sm text-gray-700">
+                            <!-- Populated by JS -->
+                        </ul>
+                    </div>
+                    
+                    <!-- Alternative Sites -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Similar Alternative Sites</h2>
+                        <div id="alternatives-list" class="space-y-2">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="flex gap-4">
+                        <button id="save-scenario-btn" class="flex-1 bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
+                            Save Scenario
+                        </button>
+                        <button id="compare-btn" class="flex-1 bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700">
+                            Compare Scenarios
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Initial State -->
+                <div id="initial-state" class="text-center py-20">
+                    <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <h3 class="mt-4 text-lg font-medium text-gray-900">Ready to Evaluate</h3>
+                    <p class="mt-2 text-sm text-gray-600">Adjust criteria weights and click "Evaluate Site" to begin</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Comparison Modal -->
+    <div id="comparison-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-gray-900">Scenario Comparison</h2>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                </div>
+            </div>
+            <div class="p-6">
+                <div id="comparison-content">
+                    <p class="text-gray-600">No scenarios saved yet. Evaluate some sites and save them for comparison.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentSiteId = null;
+        let currentEvaluation = null;
+        let criteriaChart = null;
+        
+        // Get site ID from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const siteIdParam = urlParams.get('site_id');
+        if (siteIdParam) {
+            currentSiteId = parseInt(siteIdParam);
+            loadSiteInfo(currentSiteId);
+        }
+        
+        // Load site info
+        async function loadSiteInfo(siteId) {
+            try {
+                const response = await fetch(`/api/grid/nodes/${siteId}`);
+                const data = await response.json();
+                const node = data.node;
+                
+                document.getElementById('selected-location').innerHTML = `
+                    <div class="font-semibold text-gray-900">${node.name}</div>
+                    <div class="text-sm text-gray-600 mt-1">
+                        <div>Lat: ${node.coordinates.latitude.toFixed(3)}, Lon: ${node.coordinates.longitude.toFixed(3)}</div>
+                        <div>${node.region} • ${node.state}</div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                            <div class="text-gray-500">Clean Gen</div>
+                            <div class="font-semibold text-green-600">${node.clean_gen}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500">Transmission</div>
+                            <div class="font-semibold text-blue-600">${node.transmission_headroom}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500">Reliability</div>
+                            <div class="font-semibold text-purple-600">${node.reliability}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading site info:', error);
+            }
+        }
+        
+        // Weight slider updates
+        const weightClean = document.getElementById('weight-clean');
+        const weightTransmission = document.getElementById('weight-transmission');
+        const weightReliability = document.getElementById('weight-reliability');
+        
+        [weightClean, weightTransmission, weightReliability].forEach(slider => {
+            slider.addEventListener('input', updateWeights);
+        });
+        
+        function updateWeights() {
+            const clean = parseFloat(weightClean.value);
+            const trans = parseFloat(weightTransmission.value);
+            const rel = parseFloat(weightReliability.value);
+            
+            document.getElementById('weight-clean-value').textContent = clean.toFixed(2);
+            document.getElementById('weight-transmission-value').textContent = trans.toFixed(2);
+            document.getElementById('weight-reliability-value').textContent = rel.toFixed(2);
+            
+            const sum = clean + trans + rel;
+            document.getElementById('weight-sum').textContent = sum.toFixed(2);
+            
+            const indicator = document.getElementById('weight-sum-indicator');
+            if (Math.abs(sum - 1.0) < 0.01) {
+                indicator.className = 'mt-3 p-2 rounded text-sm text-center bg-green-100 text-green-800';
+            } else {
+                indicator.className = 'mt-3 p-2 rounded text-sm text-center bg-red-100 text-red-800';
+            }
+        }
+        
+        // Evaluate button
+        document.getElementById('evaluate-btn').addEventListener('click', evaluateSite);
+        
+        async function evaluateSite() {
+            if (!currentSiteId) {
+                alert('No site selected. Please select a site from the map view.');
+                return;
+            }
+            
+            const requestBody = {
+                site_id: currentSiteId,
+                weight_clean: parseFloat(weightClean.value),
+                weight_transmission: parseFloat(weightTransmission.value),
+                weight_reliability: parseFloat(weightReliability.value),
+                demand_size_mw: parseInt(document.getElementById('demand-size').value),
+                demand_type: document.getElementById('demand-type').value
+            };
+            
+            try {
+                const response = await fetch('/api/siting/evaluate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`Error: ${error.detail}`);
+                    return;
+                }
+                
+                currentEvaluation = await response.json();
+                displayResults(currentEvaluation);
+                
+            } catch (error) {
+                console.error('Error evaluating site:', error);
+                alert('Failed to evaluate site. Please try again.');
+            }
+        }
+        
+        function displayResults(evaluation) {
+            // Show results container
+            document.getElementById('results-container').classList.remove('hidden');
+            document.getElementById('initial-state').classList.add('hidden');
+            
+            const breakdown = evaluation.score_breakdown;
+            
+            // Composite score
+            document.getElementById('composite-score').textContent = breakdown.composite_score.toFixed(1);
+            document.getElementById('percentile-rank').textContent = 
+                evaluation.percentile_rank ? `${evaluation.percentile_rank.toFixed(0)}th percentile nationally` : '';
+            
+            // Breakdown details
+            document.getElementById('breakdown-details').innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-700">Clean Generation</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-600">${breakdown.clean_gen_score} × ${breakdown.weights_used.weight_clean.toFixed(2)}</span>
+                        <span class="text-lg font-semibold text-green-600">${breakdown.clean_gen_contribution.toFixed(1)}</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-700">Transmission Headroom</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-600">${breakdown.transmission_score} × ${breakdown.weights_used.weight_transmission.toFixed(2)}</span>
+                        <span class="text-lg font-semibold text-blue-600">${breakdown.transmission_contribution.toFixed(1)}</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-700">Grid Reliability</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-600">${breakdown.reliability_score} × ${breakdown.weights_used.weight_reliability.toFixed(2)}</span>
+                        <span class="text-lg font-semibold text-purple-600">${breakdown.reliability_contribution.toFixed(1)}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Chart
+            updateChart(breakdown);
+            
+            // Evaluation notes
+            const notesList = document.getElementById('evaluation-notes');
+            notesList.innerHTML = evaluation.evaluation_notes.map(note => 
+                `<li class="flex items-start"><span class="mr-2">•</span><span>${note}</span></li>`
+            ).join('');
+            
+            // Alternatives
+            const altList = document.getElementById('alternatives-list');
+            if (evaluation.alternative_sites && evaluation.alternative_sites.length > 0) {
+                altList.innerHTML = evaluation.alternative_sites.map(alt => `
+                    <div class="p-3 border rounded hover:bg-gray-50 cursor-pointer" onclick="window.location.href='/framework?site_id=${alt.id}'">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-medium text-gray-900">${alt.name}</div>
+                                <div class="text-xs text-gray-600">${alt.region} • ${alt.state}</div>
+                            </div>
+                            <div class="text-lg font-semibold text-blue-600">${alt.composite_score.toFixed(1)}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                altList.innerHTML = '<p class="text-sm text-gray-600">No alternatives available</p>';
+            }
+        }
+        
+        function updateChart(breakdown) {
+            const ctx = document.getElementById('criteria-chart');
+            
+            if (criteriaChart) {
+                criteriaChart.destroy();
+            }
+            
+            criteriaChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Clean Generation', 'Transmission Headroom', 'Grid Reliability'],
+                    datasets: [{
+                        label: 'Current Site',
+                        data: [
+                            breakdown.clean_gen_score,
+                            breakdown.transmission_score,
+                            breakdown.reliability_score
+                        ],
+                        fill: true,
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgb(59, 130, 246)',
+                        pointBackgroundColor: 'rgb(59, 130, 246)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(59, 130, 246)'
+                    }]
+                },
+                options: {
+                    elements: {
+                        line: {
+                            borderWidth: 3
+                        }
+                    },
+                    scales: {
+                        r: {
+                            min: 0,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Save scenario
+        document.getElementById('save-scenario-btn').addEventListener('click', async () => {
+            if (!currentEvaluation) {
+                alert('No evaluation to save. Please evaluate a site first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/siting/scenarios/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentEvaluation)
+                });
+                
+                const result = await response.json();
+                alert(`Scenario saved! Total saved: ${result.total_saved}`);
+            } catch (error) {
+                console.error('Error saving scenario:', error);
+                alert('Failed to save scenario.');
+            }
+        });
+        
+        // Compare scenarios
+        document.getElementById('compare-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/siting/scenarios');
+                const data = await response.json();
+                
+                if (data.scenarios.length === 0) {
+                    alert('No scenarios saved yet. Evaluate and save some sites first.');
+                    return;
+                }
+                
+                showComparisonModal(data.scenarios);
+            } catch (error) {
+                console.error('Error loading scenarios:', error);
+            }
+        });
+        
+        function showComparisonModal(scenarios) {
+            const modal = document.getElementById('comparison-modal');
+            const content = document.getElementById('comparison-content');
+            
+            content.innerHTML = `
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Site Name</th>
+                            <th class="px-4 py-2 text-center">Composite Score</th>
+                            <th class="px-4 py-2 text-center">Clean Gen</th>
+                            <th class="px-4 py-2 text-center">Transmission</th>
+                            <th class="px-4 py-2 text-center">Reliability</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${scenarios.map(s => `
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="px-4 py-2">${s.site.name}</td>
+                                <td class="px-4 py-2 text-center font-semibold text-blue-600">${s.score_breakdown.composite_score.toFixed(1)}</td>
+                                <td class="px-4 py-2 text-center">${s.score_breakdown.clean_gen_contribution.toFixed(1)}</td>
+                                <td class="px-4 py-2 text-center">${s.score_breakdown.transmission_contribution.toFixed(1)}</td>
+                                <td class="px-4 py-2 text-center">${s.score_breakdown.reliability_contribution.toFixed(1)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        
+        document.getElementById('close-modal').addEventListener('click', () => {
+            const modal = document.getElementById('comparison-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        });
+        
+        // Manual input toggle
+        document.getElementById('manual-input-toggle').addEventListener('click', () => {
+            const manualInput = document.getElementById('manual-input');
+            manualInput.classList.toggle('hidden');
+        });
+    </script>
+</body>
+</html>
