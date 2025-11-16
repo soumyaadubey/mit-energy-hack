@@ -11,6 +11,116 @@ import math
 
 
 # ============================================================================
+# POWER PLANT MODELS
+# ============================================================================
+
+class PowerPlant(BaseModel):
+    """
+    US Power Plant from eGRID database.
+    
+    Contains location, fuel type, capacity, and generation data.
+    Used for clean generation scoring and map visualization.
+    """
+    oris_code: int = Field(..., description="DOE plant identification code")
+    plant_name: str
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    primary_fuel: str = Field(..., description="EIA fuel code (e.g., SUN, WND, WAT)")
+    primary_fuel_category: str = Field(..., description="Fuel category (e.g., SOLAR, WIND, HYDRO)")
+    nameplate_mw: float = Field(..., ge=0)
+    annual_net_gen_mwh: float = Field(0.0, ge=0, description="Annual generation, 0 if not reported")
+    
+    def is_renewable(self) -> bool:
+        """Check if plant uses renewable energy source (WIND, SOLAR, HYDRO, GEOTHERMAL only)"""
+        # Only WND, SUN, WAT, GEO are considered clean energy sources
+        renewable_fuels = {"WND", "SUN", "WAT", "GEO"}
+        renewable_categories = {"WIND", "SOLAR", "HYDRO", "GEOTHERMAL"}
+        return (self.primary_fuel in renewable_fuels or 
+                self.primary_fuel_category in renewable_categories)
+    
+    def is_clean(self) -> bool:
+        """Check if plant is clean energy (same as renewable - WND, SUN, WAT, GEO only)"""
+        # Only renewable sources count as clean - no nuclear, no biomass
+        return self.is_renewable()
+    
+    def get_fuel_color(self) -> str:
+        """Get Mapbox GL color for fuel category"""
+        return get_fuel_category_color(self.primary_fuel_category)
+    
+    def to_geojson_feature(self) -> Dict[str, Any]:
+        """Convert power plant to GeoJSON feature for Mapbox visualization"""
+        return {
+            "type": "Feature",
+            "id": self.oris_code,
+            "properties": {
+                "oris_code": self.oris_code,
+                "plant_name": self.plant_name,
+                "primary_fuel": self.primary_fuel,
+                "primary_fuel_category": self.primary_fuel_category,
+                "nameplate_mw": round(self.nameplate_mw, 1),
+                "annual_net_gen_mwh": round(self.annual_net_gen_mwh, 0),
+                "is_renewable": self.is_renewable(),
+                "is_clean": self.is_clean(),
+                "fuel_color": self.get_fuel_color(),
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [self.longitude, self.latitude]
+            }
+        }
+
+
+def get_fuel_category_color(fuel_category: str) -> str:
+    """
+    Get color for power plant fuel category.
+    
+    Clean energy sources get vibrant green/blue colors.
+    Non-clean sources get distinct warm colors for visibility.
+    """
+    color_map = {
+        # Clean energy sources (green/blue palette)
+        "SOLAR": "#22c55e",      # Green-500
+        "WIND": "#10b981",       # Emerald-500
+        "HYDRO": "#0ea5e9",      # Sky-500
+        "GEOTHERMAL": "#84cc16", # Lime-500
+        
+        # Non-clean sources (warm/distinct colors)
+        "BIOMASS": "#f59e0b",    # Amber-500
+        "NUCLEAR": "#8b5cf6",    # Violet-500
+        "GAS": "#f97316",        # Orange-500
+        "COAL": "#ef4444",       # Red-500
+        "OIL": "#dc2626",        # Red-600
+        "OFSL": "#fb923c",       # Orange-400
+        "OTHF": "#a855f7",       # Purple-500
+    }
+    return color_map.get(fuel_category, "#6b7280")  # Default: Gray-500
+
+
+def get_fuel_category_icon(fuel_category: str) -> str:
+    """
+    Get emoji/icon for fuel category (for UI display).
+    Clean energy sources have nature icons, non-clean have industrial icons.
+    """
+    icon_map = {
+        # Clean energy sources
+        "SOLAR": "☀️",
+        "WIND": "💨",
+        "HYDRO": "💧",
+        "GEOTHERMAL": "🌋",
+        
+        # Non-clean energy sources
+        "BIOMASS": "🌾",
+        "NUCLEAR": "⚛️",
+        "GAS": "🔥",
+        "COAL": "⛏️",
+        "OIL": "🛢️",
+        "OFSL": "⚡",
+        "OTHF": "⚙️",
+    }
+    return icon_map.get(fuel_category, "⚡")
+
+
+# ============================================================================
 # GRID NODE MODELS
 # ============================================================================
 
@@ -27,6 +137,19 @@ class NearbyProject(BaseModel):
     capacity_mw: int
     project_type: Literal["wind", "solar", "hydro", "nuclear", "battery"]
     status: Literal["planned", "under_construction", "operational"] = "operational"
+
+
+class NearbyPowerPlant(BaseModel):
+    """Nearby power plant from eGRID data"""
+    oris_code: int
+    plant_name: str
+    distance_km: float
+    primary_fuel: str
+    primary_fuel_category: str
+    nameplate_mw: float
+    is_clean: bool
+    latitude: float
+    longitude: float
 
 
 class TransmissionLine(BaseModel):
@@ -163,6 +286,9 @@ class SiteEvaluation(BaseModel):
     percentile_rank: Optional[float] = None  # Where this site ranks (0-100)
     alternative_sites: List[Dict[str, Any]] = []  # Top N alternatives
     
+    # Nearby power plants (for transparency on score drivers)
+    nearby_power_plants: List[NearbyPowerPlant] = []
+    
     # Metadata
     evaluated_at: datetime = Field(default_factory=datetime.utcnow)
     evaluation_notes: List[str] = []
@@ -228,8 +354,48 @@ class AlternativeSitesRequest(BaseModel):
     exclude_self: bool = Field(True, description="Exclude the reference site from results")
 
 
+class LocationEvaluationRequest(BaseModel):
+    """Request to evaluate an arbitrary location by lat/lon coordinates"""
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude of location to evaluate")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude of location to evaluate")
+    weight_clean: float = Field(0.4, ge=0, le=1)
+    weight_transmission: float = Field(0.3, ge=0, le=1)
+    weight_reliability: float = Field(0.3, ge=0, le=1)
+    demand_size_mw: Optional[int] = Field(None, ge=10, le=2000)
+    demand_type: Optional[Literal["data_center", "electrolyzer", "ev_hub", "hydrogen_plant", "ai_compute"]] = None
+    location_name: Optional[str] = Field(None, description="Optional name for the clicked location")
+    
+    def to_weights(self) -> SitingWeights:
+        """Convert to SitingWeights model with validation"""
+        weights = SitingWeights(
+            weight_clean=self.weight_clean,
+            weight_transmission=self.weight_transmission,
+            weight_reliability=self.weight_reliability
+        )
+        weights.validate_sum()
+        return weights
+    
+    def to_demand_profile(self) -> Optional[DemandProfile]:
+        """Convert to DemandProfile if demand info provided"""
+        if self.demand_size_mw and self.demand_type:
+            return DemandProfile(
+                demand_type=self.demand_type,
+                size_mw=self.demand_size_mw
+            )
+        return None
+
+
 class GeoJSONResponse(BaseModel):
     """GeoJSON FeatureCollection response"""
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: List[Dict[str, Any]]
     metadata: Optional[Dict[str, Any]] = None
+
+
+class PowerPlantFilters(BaseModel):
+    """Filters for power plant queries"""
+    fuel_category: Optional[str] = None
+    min_capacity_mw: float = Field(0, ge=0)
+    max_capacity_mw: float = Field(10000, ge=0)
+    renewable_only: bool = False
+    clean_only: bool = False

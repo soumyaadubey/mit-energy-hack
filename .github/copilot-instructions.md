@@ -1,253 +1,407 @@
-# Smart Grid Siting Framework - AI Agent Instructions
+# Smart Grid Siting Framework
 
-## Project Overview
-Intelligent siting framework that identifies **optimal locations for large electro-intensive loads** (data centers, electrolyzers, EV/hydrogen hubs) to reduce transmission congestion, improve system reliability, lower emissions, and accelerate clean-energy integration. Evaluates sites using clean generation proximity, transmission headroom, and grid resilience metrics.
+Intelligent siting framework for optimal placement of large electro-intensive loads (data centers, electrolyzers, EV/hydrogen hubs). Evaluates 40 US grid nodes using weighted scoring across three criteria: clean generation proximity, transmission headroom, and grid reliability.
 
-**Stack**: Python 3.12 + FastAPI + Pydantic, Vanilla JS frontend with Mapbox GL, Tailwind CSS
+**Stack**: Python 3.12 + FastAPI + Pydantic | Vanilla JS + Mapbox GL + Chart.js | Tailwind CSS  
+**Working Directory**: All development in `kazuma/` subdirectory  
+**Data Source**: 10,000+ US power plants from EPA eGRID 2023 + 9 RWE renewable projects
 
-## Product Architecture (2 Pages)
+---
 
-### Page 1: Map View (Interactive Geospatial Explorer)
-- **Purpose**: Home page showing spatial layers for clean generation, transmission headroom, and reliability
-- **Left Panel**: Layer toggles, legend, mini site-summary on hover
-- **Right Panel**: Fullscreen Mapbox with 12-20 mock grid nodes across US
-- **Interaction**: Click marker → preview box → "Send to Siting Framework" button
-- **Mock Data Layers**:
-  - Clean Generation Density (0-100): proximity to renewable resources
-  - Transmission Headroom (0-100): available capacity on high-voltage lines
-  - Reliability Score (0-100): outage frequency + grid topology robustness
+## Architecture Patterns
 
-### Page 2: Siting Framework (Optimization Sandbox)
-- **Purpose**: Structured interface to evaluate/compare candidate sites
-- **Left Panel Inputs**:
-  - Selected location (from map or manual lat/lon)
-  - Criteria weight sliders (must sum to 1.0): clean_gen, transmission_headroom, reliability
-  - Demand size selector: 10MW/50MW/200MW/500MW
-- **Right Panel Results**:
-  - Composite siting score with category breakdown
-  - Spider/radar chart visualization
-  - "Similar alternative sites" ranked list
-  - Save/Compare scenario buttons (modal, not separate page)
+### Backend Data Flow (5 Layers)
+**`egrid2023_plants_lat_lng_fuel_power.json`** (root) → **`power_plants_data.py`** + **`energy_sources.py`** → **`scoring_utils.py`** → **`grid_data.py`** → **`siting_engine.py`** → **`main.py`**
 
-## Core Data Flow
+1. **External Data** (root `egrid2023_plants_lat_lng_fuel_power.json`): 10,000+ US power plants with coordinates, fuel type, capacity. **Path is relative from `kazuma/`: `"../egrid2023_plants_lat_lng_fuel_power.json"`**
+2. **Data Loaders** (`power_plants_data.py`, `energy_sources.py`): Load JSON, parse with Pydantic, geocode addresses (cached in `data/cache/`). Global caching via `_cached_plants`
+3. **Scoring Layer** (`scoring_utils.py`): Distance calculations (Pythagorean), proximity decay functions, voltage-aware transmission scoring, capacity adequacy factors
+4. **Grid Generation** (`grid_data.py`): Generates 40 `GridNode` objects with **real scores** calculated from power plant proximity. Startup caching: `grid_nodes = generate_grid_nodes_with_real_scores()`
+5. **Engine Layer** (`siting_engine.py`): `SitingEngine` class with weighted composite scoring. Uses `math.isclose(sum, 1.0, rel_tol=1e-9)` to validate weights (never `==` for floats)
+6. **API Layer** (`main.py`): FastAPI endpoints serve GeoJSON, evaluate sites, rank alternatives. In-memory scenario storage (no database)
 
-### Service Boundaries (New Architecture)
-- **`main.py`**: FastAPI endpoints for grid nodes, siting score calculation, scenario comparison
-- **`models.py`**: Pydantic schemas for `GridNode`, `SitingCriteria`, `SiteEvaluation`, `ScenarioComparison`
-- **`siting_engine.py`**: Composite score calculator using weighted criteria (replaces `policy_engine.py`)
-- **`grid_data.py`**: Mock data generator for 12-20 US grid nodes with clean-gen/transmission/reliability scores (replaces `epa_data.py`)
-- **`static/map.html`**: Map View page with layer toggles
-- **`static/framework.html`**: Siting Framework page with weight sliders and evaluation UI
-
-### Scoring Formula (Core Algorithm)
+### Pydantic Model Hierarchy
 ```python
-composite_score = (clean_gen * weight_clean) 
-                + (transmission_headroom * weight_transmission)
-                + (reliability * weight_reliability)
+PowerPlant (10,000+ from eGRID, global cache)
+  └─ is_clean() -> bool  # Only WND, SUN, WAT, GEO = True
 
-# Constraint: weight_clean + weight_transmission + weight_reliability == 1.0
-# Default weights: 0.4 / 0.3 / 0.3
+EnergySource (9 from RWE, geocoded)
+  └─ coordinates (geocoded, cached in data/cache/geocode_cache.pkl)
+
+GridNode (40 instances, real scores)
+  ├─ coordinates: GridNodeCoordinates
+  ├─ clean_gen: float (calculated from power_plants proximity)
+  ├─ transmission_headroom: float (calculated from ALL plants, voltage-aware)
+  ├─ reliability: float (still mock)
+  ├─ nearby_projects: List[NearbyProject]
+  └─ transmission_lines: List[TransmissionLine]
+
+SitingRequest → converted to SitingWeights + DemandProfile
+  └─ SiteEvaluation (output)
+       └─ score_breakdown: ScoreBreakdown
 ```
 
-**Example Calculation**:
-- Pacific Northwest Node A: clean_gen=82, transmission=74, reliability=68
-- Weights: 0.4 / 0.35 / 0.25
-- Score = 82×0.4 + 74×0.35 + 68×0.25 = **75.7**
+**Critical Pattern**: Models have `.validate_sum()` methods (e.g., `SitingWeights`) that raise `ValueError` if weights don't sum to 1.0. Always call before calculating scores.
 
-### Mock Data Structure
-Each grid node has:
-```python
-{
-  "id": 1,
-  "name": "Pacific Northwest Node A",
-  "lat": 45.523,
-  "lon": -122.676,
-  "clean_gen": 82,           # 0-100 scale
-  "transmission_headroom": 74,
-  "reliability": 68,
-  "nearby_projects": [...],   # Optional: nearby clean energy additions
-  "nearest_line_km": 12       # Optional: transmission distance
-}
-```
+**Critical Data Flow**: At startup (`@app.on_event("startup")` in `main.py`):
+1. Load 10,000+ power plants from `../egrid2023_plants_lat_lng_fuel_power.json` → cached in `_cached_plants`
+2. Load 9 RWE energy sources from `data/rwe_projects_clean.json` → geocode (cached)
+3. Generate 40 grid nodes with **real scores** from proximity calculations
+4. Changes to JSON data require server restart to reload
+
+---
 
 ## Development Workflow
 
 ### Environment Setup
 ```bash
-python3.12 -m venv venv && source venv/bin/activate
+cd kazuma/
+python3.12 -m venv venv && source venv/bin/activate  # MUST use 3.12 (Pydantic 2.5.0 breaks on 3.13)
 pip install -r requirements.txt
 npm install && npm run build:css
-export MAPBOX_TOKEN="pk.ey..." # Optional but recommended for frontend map
 ```
 
-**Python 3.12 Required**: Pydantic 2.5.0 has build issues on 3.13—always use 3.12.
+**Never use Python 3.13** – Pydantic 2.5.0 has build failures. Enforced in `requirements.txt` comment.
 
-### Running & Testing
+### Running the App
 ```bash
-# Backend with hot reload
+# Primary method (hot reload)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-# Frontend CSS development (parallel terminal)
+# CSS development (parallel terminal)
 npm run watch:css
-
-# Manual API testing
-curl http://localhost:8000/api/facilities?industry_type=steel&state=TX&year=2022
 ```
 
-**No pytest suite exists yet**—test endpoints manually via browser/curl. When adding tests, follow pattern in `AGENTS.md`: use `pytest` with `httpx.AsyncClient` for endpoints and pandas fixtures for data validation.
+**No test suite exists**. When adding: use `pytest` with `httpx.AsyncClient` per `AGENTS.md` guidance.
 
-## Code Conventions & Patterns
+**Critical Dependencies**:
+- `geopy==2.4.1` for geocoding (Nominatim, rate-limited to 1 req/sec)
+- Geocoding cache: `data/cache/geocode_cache.pkl` (pickle format, persists across restarts)
+- Delete cache to retry failed geocodes: `rm kazuma/data/cache/geocode_cache.pkl`
 
-### Type Hints & Validation
-**All public functions** require explicit type hints. Pydantic models handle runtime validation:
+### Tailwind Workflow
+1. Edit `static/input.css` (only `@tailwind` directives)
+2. Run `npm run build:css` → generates `static/output.css` (gitignored)
+3. HTML uses utility classes: `class="bg-blue-500 hover:bg-blue-600"`
+
+**Never commit `static/output.css`** – regenerated on each build.
+
+---
+
+## Core Business Logic
+
+### Real Scoring Architecture (Replaces Mock Data)
+
+**Clean Gen Score** (0-100): Calculated from proximity to **clean power plants only** (WND, SUN, WAT, GEO from eGRID)
+- Distance decay: <50km=100%, 50-100km=70%, 100-200km=40%, 200-300km=20%, >300km=0%
+- Capacity weighting: Larger plants contribute more
+- **Demand adequacy**: If `demand_mw` provided, adjusts score based on capacity ratio:
+  - ≥3x demand: 1.20x bonus (excellent surplus)
+  - 2-3x: 1.10x bonus (good resilience)
+  - 1.5-2x: 1.0x (adequate)
+  - 1-1.5x: 0.95x (tight)
+  - 0.7-1x: 0.85x (moderate shortfall)
+  - <0.5x: 0.50x (severe shortfall)
+- Normalization: 90th percentile of all node scores → 100
+
+**Transmission Score** (0-100): Calculated from **ALL power plants** (not just clean)
+- Why: Large fossil plants often have best transmission (500-765kV lines)
+- **Voltage-aware decay** based on plant size:
+  - Large (≥500 MW): gentle decay to 300km (500-765kV lines)
+  - Medium (100-500 MW): moderate decay to 150km (230-345kV lines)
+  - Small (<100 MW): steep decay to 50km (115-230kV lines)
+- Function: `transmission_decay_factor(distance_km, plant_capacity_mw)`
+- Normalization: 90th percentile → 100
+
+**Reliability Score** (0-100): Still mock (future: grid stability data)
+
+### Scoring Formula (Critical Implementation)
 ```python
-async def evaluate_site(
-    site_id: int,
-    weight_clean: float = Query(0.4, ge=0, le=1),
-    weight_transmission: float = Query(0.3, ge=0, le=1),
-    weight_reliability: float = Query(0.3, ge=0, le=1),
-    demand_size_mw: Optional[int] = Query(None, ge=10, le=500)
-) -> SiteEvaluation:
-    # Validate weights sum to 1.0
-    if not math.isclose(weight_clean + weight_transmission + weight_reliability, 1.0):
-        raise HTTPException(400, "Weights must sum to 1.0")
+def calculate_composite_score(node: GridNode, weights: SitingWeights) -> ScoreBreakdown:
+    weights.validate_sum()  # Raises ValueError if sum ≠ 1.0
+    
+    composite = (node.clean_gen * weights.weight_clean +
+                 node.transmission_headroom * weights.weight_transmission +
+                 node.reliability * weights.weight_reliability)
+    
+    return ScoreBreakdown(composite_score=round(composite, 1), ...)
 ```
 
-### Layer Value Ranges (Critical for UI)
-All three metrics use **0-100 scales** with specific thresholds:
+**Default weights**: `0.4 / 0.3 / 0.3` (clean/transmission/reliability)
 
-**Clean Generation Density**:
-- 0-20: Weak clean energy access
-- 20-50: Moderate wind/solar potential  
-- 50-80: Strong clean resource areas
-- 80-100: Highest resource zones + proximity to planned renewables
+**Key Functions in `scoring_utils.py`**:
+```python
+pythagorean_distance(lat1, lon1, lat2, lon2) -> float
+  # Fast approximation: 1° lat ≈ 111km, 1° lon ≈ 111km × cos(lat)
+  # Accurate for <1000km distances
 
-**Transmission Headroom**:
-- 0-30: Congested
-- 30-60: Moderate headroom
-- 60-90: Strong headroom
-- 90-100: Ideal placement area
+proximity_decay_factor(distance_km) -> float
+  # Returns 0.0-1.0 based on stepped decay (50/100/200/300km thresholds)
 
-**Reliability/Resilience Score**:
-- 0-25: Low reliability (high outage frequency, wildfire/storm exposure)
-- 25-60: Medium reliability
-- 60-85: High reliability
-- 85-100: Very high reliability
+transmission_decay_factor(distance_km, plant_capacity_mw) -> float
+  # Voltage-aware: Large plants useful to 300km, small to 50km
 
-### Siting Score Calculation
-`SitingEngine.calculate_composite_score()` is the core algorithm:
-1. **Validate weights** sum to exactly 1.0 (use `math.isclose()` for floating-point tolerance)
-2. **Apply weighted sum** to three normalized (0-100) metrics
-3. **Round to 1 decimal** place for display (e.g., 75.7 not 75.6834)
-4. **Return breakdown** showing contribution of each factor
+calculate_capacity_adequacy_factor(available_mw, demand_mw) -> float
+  # Returns 0.5-1.2x multiplier based on capacity/demand ratio
 
-Always return both the composite score AND per-factor contributions for transparency.
+calculate_clean_gen_score(..., demand_mw: Optional[float] = None) -> float
+  # Main scoring function with demand-aware adjustment
+
+calculate_transmission_score(lat, lon, power_plants, norm_factor) -> float
+  # Uses ALL plants (not just clean) for transmission infrastructure
+```
+
+### Float Comparison Pattern
+```python
+# WRONG - float rounding errors
+if weight_sum == 1.0:
+
+# CORRECT - always use math.isclose()
+import math
+if math.isclose(weight_sum, 1.0, rel_tol=1e-9):
+```
+
+**Why**: `0.4 + 0.3 + 0.3 == 0.9999999999...` in IEEE 754 arithmetic.
+
+### Real Data Pattern (Replaces Mock)
+`grid_data.py` calculates scores from EPA data:
+```python
+def generate_grid_nodes_with_real_scores(
+    energy_sources: Optional[List] = None,
+    power_plants: Optional[List] = None
+) -> List[GridNode]:
+    # Generate 40 nodes with coordinates
+    nodes = generate_base_nodes()
+    
+    # Calculate real clean_gen scores (only clean plants: WND, SUN, WAT, GEO)
+    nodes = calculate_real_clean_gen_scores(nodes, power_plants)
+    
+    # Calculate real transmission scores (ALL plants, voltage-aware)
+    nodes = calculate_real_transmission_scores(nodes, power_plants)
+    
+    return nodes
+```
+
+Cached at startup in `main.py`: `grid_nodes = generate_grid_nodes_with_real_scores(energy_sources, power_plants)`. Changes to JSON data require server restart.
+
+**Critical Paths**:
+- Power plants JSON: `kazuma/../egrid2023_plants_lat_lng_fuel_power.json` (10,000+ plants)
+- Energy sources JSON: `kazuma/data/rwe_projects_clean.json` (9 projects)
+- Geocoding cache: `kazuma/data/cache/geocode_cache.pkl` (auto-generated)
+
+---
+
+## API Patterns
+
+### Standard Response Structure
+```python
+# List endpoints - include metadata
+return {"nodes": [...], "total": len(nodes), "filters_applied": {...}}
+
+# Evaluation endpoints - return Pydantic models
+return SiteEvaluation(...)  # FastAPI auto-serializes
+```
+
+### Error Handling
+```python
+try:
+    node = get_node_by_id(site_id)
+except ValueError:
+    raise HTTPException(status_code=404, detail=f"Node {site_id} not found")
+```
+
+Use `HTTPException` (FastAPI), not plain `raise`. Log with `logger.info()` before returning.
+
+---
+
+## Code Conventions
+
+### Type Hints (Strictly Enforced)
+```python
+async def evaluate_site(request: SitingRequest) -> SiteEvaluation:
+    # Pydantic handles runtime validation
+```
+
+**Never omit** return types or parameter types in API/engine code.
+
+### Pydantic Validators
+```python
+class SitingWeights(BaseModel):
+    weight_clean: float = Field(0.4, ge=0, le=1)
+    
+    @field_validator('weight_clean')
+    @classmethod
+    def validate_weight_range(cls, v: float) -> float:
+        if not (0 <= v <= 1):
+            raise ValueError("Weight must be 0-1")
+        return v
+```
+
+Use `@field_validator` for per-field checks, instance methods for cross-field validation.
+
+### GeoJSON Conversion
+```python
+def to_geojson_feature(self) -> Dict[str, Any]:
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [self.coordinates.longitude, self.coordinates.latitude]
+        }
+    }
+```
+
+**Coordinate order**: `[lon, lat]` (GeoJSON spec), not `[lat, lon]`.
+
+---
 
 ## Frontend Integration
 
-### Map View Page (`static/map.html`)
-- **Layer Toggles**: 3 checkboxes control which Mapbox layers are visible
-- **Click Interaction**: 
-  ```javascript
-  map.on('click', 'grid-nodes-layer', (e) => {
-    const node = e.features[0].properties;
-    showPreviewBox(node);  // Display mini-summary
-  });
-  ```
-- **Preview Box**: Shows name, 3 scores, auto-calculated composite (default weights)
-- **Send to Framework Button**: Navigates to `framework.html?site_id=${node.id}`
+### Mapbox Pattern
+```javascript
+// Fetch config first
+const config = await fetch('/api/config').then(r => r.json());
+mapboxgl.accessToken = config.mapbox_token;
 
-### Siting Framework Page (`static/framework.html`)
-- **Weight Sliders**: 3 range inputs with live validation that weights sum to 1.0
-- **Auto-recalculation**: On slider change, immediately call `/api/siting/evaluate` 
-- **Visualization**: Use Chart.js radar chart for 3-axis comparison
-- **Comparison Modal**: Popup (not separate page) showing table of saved scenarios
+// Load GeoJSON
+const data = await fetch('/api/grid/nodes/geojson').then(r => r.json());
+map.addSource('grid-nodes', { type: 'geojson', data });
+```
 
-### Mapbox Workflow
-- `static/map.html` fetches `/api/grid/nodes/geojson` for mock data points
-- GeoJSON layers use `circle-radius` expression based on composite score
-- Color coding by layer value ranges (see Layer Value Ranges section)
-- Falls back to hardcoded 5 sample nodes if backend unavailable
-
-### Tailwind Build Process
-- Edit `static/input.css` (utility imports only)
-- Run `npm run build:css` → generates `static/output.css` (gitignored)
-- Use utility classes directly in HTML—no custom CSS files
-
-## Common Gotchas
-
-1. **Weight Validation**: Always use `math.isclose(sum, 1.0, rel_tol=1e-9)` not `sum == 1.0` because floating-point arithmetic causes errors like 0.4 + 0.3 + 0.3 = 0.9999999999.
-
-2. **Score Rounding**: Display composite scores rounded to 1 decimal (75.7) but store full precision internally for accurate comparisons.
-
-3. **Mock Data Consistency**: Grid node IDs must match between GeoJSON endpoint and evaluation endpoint. Use same source of truth.
-
-4. **Layer Toggle State**: Map layers persist across page reloads using localStorage—clear it when testing layer changes.
-
-5. **Demand Size Parameter**: Currently optional/cosmetic (doesn't affect score). If implementing load-dependent logic later, add to scoring formula.
-
-6. **CORS Middleware**: Set to `allow_origins=["*"]` for hackathon—**remove for production**.
-
-7. **Environment Variables**: `MAPBOX_TOKEN` loaded via `os.getenv()`. No `.env` file parsing—set manually or use deployment secrets.
-
-## Adding New Features
-
-### New Siting Criterion
-1. Add field to `GridNode` model in `models.py` (e.g., `water_availability: float`)
-2. Update mock data in `grid_data.py` with 0-100 value for new criterion
-3. Add weight parameter to `SitingEngine.calculate_composite_score()`
-4. Add slider to `framework.html` UI with constraint validation
-5. Update radar chart in frontend to show 4th axis
-
-### New Demand Type
-1. Add to `DemandType` Literal in `models.py`: `"ai_compute_hub"` | `"hydrogen_plant"`
-2. Update `demand_size_mw` ranges in Query validation
-3. (Optional) Implement load-dependent scoring if criteria have threshold effects
-
-### New Comparison Feature
-1. Add `/api/siting/scenarios` endpoint to save evaluations
-2. Return list of `SavedScenario` models with site_id, weights, score
-3. Frontend: Build comparison table in modal showing delta columns
-4. Highlight winner with green background (highest composite score)
-
-### New API Endpoint Pattern
-Follow FastAPI patterns in `main.py`:
-- Use Pydantic models for request/response types
-- Group endpoints with comment blocks: `# === GRID DATA ENDPOINTS ===`
-- Include weight validation with descriptive error messages
-- Log with `logger.info(f"Evaluated site {site_id} with score {score:.1f}")`
-
-## Key Files Reference
-- **Mock Grid Nodes**: Minimum 5 nodes required (Pacific NW, N. California, Texas, Midwest, Southeast), expand to 12-20 for full coverage
-- **Scoring Defaults**: weight_clean=0.4, weight_transmission=0.3, weight_reliability=0.3 (matches energy policy best practices)
-- **Sample API Response**: `/api/grid/nodes/geojson` returns FeatureCollection with 3 metric properties per node
-- **Existing Agent Guide**: `kazuma/AGENTS.md` contains detailed build/test/commit workflows
-
-## API Endpoints (New)
-
-### GET `/api/grid/nodes/geojson`
-Returns GeoJSON FeatureCollection of all grid nodes for map display.
-
-### GET `/api/grid/nodes/{site_id}`
-Returns detailed GridNode model for specific site.
-
-### POST `/api/siting/evaluate`
-Evaluates site with custom weights. Request body:
-```json
-{
-  "site_id": 1,
-  "weight_clean": 0.4,
-  "weight_transmission": 0.35,
-  "weight_reliability": 0.25,
-  "demand_size_mw": 200
+### Weight Slider Validation
+```javascript
+const sum = clean + trans + rel;
+if (Math.abs(sum - 1.0) > 0.001) {
+    showError('Weights must sum to 1.0');
 }
 ```
 
-### GET `/api/siting/alternatives?site_id={id}&limit={n}`
-Returns top N alternative sites ranked by composite score using same weights.
+Mirror backend validation in frontend for immediate feedback.
 
-## External Dependencies
-- **Mapbox GL JS**: v2.15.0 for map rendering (requires token for production use)
-- **Chart.js**: For radar/spider charts showing 3-axis siting criteria
-- **No external APIs**: All data is mock/generated—no EPA or grid operator integrations yet
-- **No database**: All data in-memory (expand to PostgreSQL + PostGIS for real deployment)
+### Chart.js Radar
+```javascript
+new Chart(ctx, {
+    type: 'radar',
+    data: {
+        labels: ['Clean Gen', 'Transmission', 'Reliability'],
+        datasets: [{ data: [clean_gen, transmission, reliability] }]
+    }
+});
+```
+
+---
+
+## Common Issues
+
+**"Weights must sum to 1.0" with 0.4 + 0.3 + 0.3**  
+→ Use `math.isclose(sum, 1.0, rel_tol=1e-9)` not `==`
+
+**Grid nodes not showing on map**  
+→ Check: GeoJSON valid, coordinates `[lon, lat]`, Mapbox token set
+
+**Server crash with Python 3.13**  
+→ Delete `venv/`, recreate with `python3.12 -m venv venv`
+
+**CSS changes not appearing**  
+→ Run `npm run build:css`, clear browser cache
+
+**Mock data inconsistencies**  
+→ Cache at startup: `grid_nodes = generate_mock_grid_nodes()`
+
+---
+
+## Adding Features
+
+### New Siting Criterion (4th metric)
+1. Add to `GridNode`: `water_availability: float`
+2. Update `generate_mock_grid_nodes()` with values for all 15 nodes
+3. Add to `SitingWeights`: `weight_water: float = 0.25`
+4. Update `calculate_composite_score()` formula
+5. Frontend: Add slider, update Chart.js to 4-axis radar
+
+### New API Endpoint
+```python
+@app.get("/api/grid/statistics")
+async def get_grid_statistics():
+    return {
+        "total_nodes": len(grid_nodes),
+        "avg_clean_gen": sum(n.clean_gen for n in grid_nodes) / len(grid_nodes)
+    }
+```
+
+Group with comment: `# === STATISTICS ENDPOINTS ===`
+
+---
+
+## Key Files
+
+**Backend** (`kazuma/`):
+- `main.py`: API with startup event loading power plants + energy sources
+- `models.py`: Pydantic models (`PowerPlant`, `GridNode`, `EnergySource`, etc.)
+- `siting_engine.py`: `SitingEngine` class with `calculate_scores_from_coordinates()`
+- `grid_data.py`: Real score generator using proximity algorithms
+- `scoring_utils.py`: Distance calculations, decay functions, normalization
+- `power_plants_data.py`: eGRID data loader with global cache
+- `energy_sources.py`: RWE data loader with geocoding + caching
+- `calculate_scores.py`: Standalone script for score calculation testing
+
+**Frontend** (`kazuma/static/`):
+- `map.html`: Mapbox with power plant layers (color-coded by fuel)
+- `framework.html`: Sliders + Chart.js + demand size selector
+- `input.css` / `output.css`: Tailwind (output gitignored)
+
+**Data** (`kazuma/data/`):
+- `rwe_projects_clean.json`: 9 renewable projects (input)
+- `cache/geocode_cache.pkl`: Geocoding cache (auto-generated)
+
+**Root** (`../` from `kazuma/`):
+- `egrid2023_plants_lat_lng_fuel_power.json`: 10,000+ power plants (critical)
+
+**Config**:
+- `requirements.txt`: Python deps + 3.12 warning + geopy
+- `package.json`: Tailwind build scripts
+
+---
+
+## Testing & Debugging
+
+### Manual API Testing
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/api/grid/nodes/geojson | jq
+curl -X POST http://localhost:8000/api/siting/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"site_id": 1, "weight_clean": 0.5, "weight_transmission": 0.3, "weight_reliability": 0.2}'
+```
+
+### Logging
+```python
+logger.info(f"Evaluated site {site_id} with score {score:.1f}")
+```
+
+### Future pytest Pattern
+```python
+async with AsyncClient(app=app, base_url="http://test") as ac:
+    response = await ac.post("/api/siting/evaluate", json={...})
+assert response.status_code == 200
+```
+
+---
+
+## Quick Reference
+
+**Default Weights**: `0.4 / 0.3 / 0.3`  
+**Score Range**: 0-100 for all metrics  
+**Total Nodes**: 40 across US regions  
+**Power Plants**: 10,000+ from EPA eGRID 2023  
+**Energy Sources**: 9 RWE renewable projects (geocoded)  
+**Port**: 8000  
+**Python**: 3.12 only (3.13 breaks Pydantic 2.5.0)  
+**CORS**: Wide open (hackathon mode)
+
+**Clean Energy Definition**: Only `WND, SUN, WAT, GEO` fuel codes count as clean
+- `is_clean()` method in `PowerPlant` model
+- Nuclear/biomass excluded from clean scoring
+- Transmission scoring uses ALL plants (fossil plants have best lines)
+
+See `kazuma/AGENTS.md` for commit/test/build workflows.

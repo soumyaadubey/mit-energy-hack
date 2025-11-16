@@ -14,13 +14,15 @@
     
     <style>
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 320px; background: white; z-index: 10; overflow-y: auto; }
-        .map-container { position: absolute; left: 320px; top: 0; bottom: 0; right: 0; }
-        .layer-toggle { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #e5e7eb; }
-        .layer-toggle input[type="checkbox"] { margin-right: 8px; }
-        .legend-item { display: flex; align-items: center; padding: 4px 0; }
-        .legend-color { width: 20px; height: 20px; border-radius: 50%; margin-right: 8px; }
-        .preview-box { position: absolute; top: 20px; right: 20px; background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 5; max-width: 300px; display: none; }
+        .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 360px; background: white; z-index: 10; overflow-y: auto; }
+        .map-container { position: absolute; left: 360px; top: 0; bottom: 0; right: 0; }
+        .filter-group { padding: 12px; border-bottom: 1px solid #e5e7eb; }
+        .filter-checkbox { display: flex; align-items: center; padding: 6px 0; cursor: pointer; }
+        .filter-checkbox input { margin-right: 8px; cursor: pointer; }
+        .legend-item { display: flex; align-items: center; padding: 4px 0; font-size: 13px; }
+        .legend-color { width: 16px; height: 16px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+        .preview-box { position: absolute; top: 20px; right: 20px; background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); z-index: 5; max-width: 320px; display: none; }
+        .stat-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -31,75 +33,123 @@
             <p class="text-blue-100 text-sm mt-1">Interactive Map View</p>
         </div>
         
-        <!-- Layer Toggles -->
-        <div class="p-4 border-b">
-            <h2 class="font-semibold text-gray-700 mb-3">Data Layers</h2>
-            
-            <label class="layer-toggle cursor-pointer hover:bg-gray-50 rounded">
-                <input type="checkbox" id="layer-clean-gen" checked class="form-checkbox text-green-600">
-                <span class="flex-1">
-                    <span class="font-medium text-gray-800">Clean Generation</span>
-                    <span class="block text-xs text-gray-500">Proximity to renewables</span>
-                </span>
+        <!-- Map Layers Control -->
+        <div class="filter-group">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Map Layers</h3>
+            <label class="filter-checkbox">
+                <input type="checkbox" id="toggle-grid-nodes" checked>
+                <span class="text-sm">Grid Nodes (40)</span>
             </label>
-            
-            <label class="layer-toggle cursor-pointer hover:bg-gray-50 rounded">
-                <input type="checkbox" id="layer-transmission" checked class="form-checkbox text-blue-600">
-                <span class="flex-1">
-                    <span class="font-medium text-gray-800">Transmission Headroom</span>
-                    <span class="block text-xs text-gray-500">Available capacity</span>
-                </span>
-            </label>
-            
-            <label class="layer-toggle cursor-pointer hover:bg-gray-50 rounded">
-                <input type="checkbox" id="layer-reliability" checked class="form-checkbox text-purple-600">
-                <span class="flex-1">
-                    <span class="font-medium text-gray-800">Grid Reliability</span>
-                    <span class="block text-xs text-gray-500">Outage frequency</span>
-                </span>
+            <label class="filter-checkbox">
+                <input type="checkbox" id="toggle-power-plants" checked>
+                <span class="text-sm">Power Plants (<span id="plant-count">0</span>)</span>
             </label>
         </div>
         
-        <!-- Legend -->
-        <div class="p-4 border-b">
-            <h2 class="font-semibold text-gray-700 mb-3">Score Legend</h2>
+        <!-- Click-to-Evaluate Info -->
+        <div class="filter-group bg-blue-50">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">🎯 Right-Click to Evaluate</h3>
+            <p class="text-xs text-gray-600">
+                Right-click anywhere on the map to evaluate that location's siting potential
+            </p>
+        </div>
+        
+        <!-- Power Plants Filter -->
+        <div class="filter-group">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Power Plants Filter</h3>
             
-            <div class="space-y-2 text-sm">
+            <label class="filter-checkbox">
+                <input type="checkbox" id="filter-renewable" checked>
+                <span class="text-sm">Clean Energy Only (☀️💨💧🌋)</span>
+            </label>
+            
+            <div class="mt-2 text-xs text-gray-500 italic">
+                Only WND, SUN, WAT, GEO count as clean
+            </div>
+        </div>
+        
+        <!-- Grid Nodes Legend -->
+        <div class="filter-group">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Grid Nodes (Clean Gen Score)</h3>
+            <div class="space-y-1">
                 <div class="legend-item">
-                    <div class="legend-color bg-green-600"></div>
+                    <div class="legend-color" style="background-color: #22c55e;"></div>
                     <span>80-100: Excellent</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color bg-yellow-500"></div>
+                    <div class="legend-color" style="background-color: #eab308;"></div>
                     <span>60-79: Good</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color bg-orange-500"></div>
+                    <div class="legend-color" style="background-color: #f97316;"></div>
                     <span>40-59: Moderate</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color bg-red-500"></div>
+                    <div class="legend-color" style="background-color: #ef4444;"></div>
                     <span>0-39: Limited</span>
                 </div>
             </div>
         </div>
         
-        <!-- Site Summary (appears on hover) -->
-        <div id="site-summary" class="p-4 hidden">
-            <h2 class="font-semibold text-gray-700 mb-2">Site Preview</h2>
-            <div id="summary-content" class="text-sm space-y-1 text-gray-600">
-                <p>Hover over a site to see details</p>
+        <!-- Power Plants Legend -->
+        <div class="filter-group">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Clean Energy Sources</h3>
+            <div class="space-y-1 mb-2">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #22c55e;"></div>
+                    <span>☀️ Solar</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #10b981;"></div>
+                    <span>💨 Wind</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #0ea5e9;"></div>
+                    <span>💧 Hydro</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #84cc16;"></div>
+                    <span>🌋 Geothermal</span>
+                </div>
+            </div>
+            <div class="text-xs text-gray-500 pt-2 border-t">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #9ca3af;"></div>
+                    <span>🚫 Non-clean (excluded)</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Statistics -->
+        <div class="filter-group bg-green-50">
+            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Clean Energy Statistics</h3>
+            <div class="space-y-2 text-xs text-gray-600">
+                <div class="flex justify-between">
+                    <span>Total Plants:</span>
+                    <span id="stat-total" class="font-semibold">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Clean Energy:</span>
+                    <span id="stat-clean" class="font-semibold text-green-700">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Clean Capacity:</span>
+                    <span id="stat-capacity" class="font-semibold text-green-700">-</span>
+                </div>
+            </div>
+            <div class="mt-2 pt-2 border-t text-xs text-gray-500 italic">
+                Only WND, SUN, WAT, GEO sources
             </div>
         </div>
         
         <!-- Instructions -->
-        <div class="p-4 bg-blue-50 text-sm text-gray-700">
+        <div class="p-4 bg-blue-50 text-xs text-gray-700">
             <p class="font-semibold mb-2">How to use:</p>
             <ol class="list-decimal list-inside space-y-1">
-                <li>Toggle layers to view different metrics</li>
-                <li>Click on any grid node marker</li>
-                <li>Review the site preview</li>
-                <li>Send promising sites to the Siting Framework</li>
+                <li>Enable "Right-Click to Evaluate" above</li>
+                <li><strong>Right-click</strong> anywhere to evaluate location</li>
+                <li><strong>Left-click</strong> nodes/plants for details</li>
+                <li>View calculated siting scores instantly</li>
             </ol>
         </div>
     </div>
@@ -110,21 +160,20 @@
         
         <!-- Preview Box (appears on click) -->
         <div id="preview-box" class="preview-box">
-            <button id="close-preview" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600">&times;</button>
-            <h3 id="preview-name" class="font-bold text-lg mb-2"></h3>
-            <div id="preview-details" class="space-y-2 text-sm">
-                <!-- Populated by JavaScript -->
+            <button id="close-preview" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            <div id="preview-content">
+                <!-- Dynamically populated -->
             </div>
-            <button id="send-to-framework" class="mt-4 w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium">
-                Send to Siting Framework →
-            </button>
         </div>
     </div>
     
     <script>
         let map;
         let mapboxToken = '';
-        let currentNode = null;
+        let currentFilters = {
+            renewableOnly: true
+        };
+        let evaluationMarker = null;  // Track marker for clicked location
         
         // Initialize map
         async function initMap() {
@@ -134,7 +183,22 @@
                 const config = await response.json();
                 mapboxToken = config.mapbox_token;
                 
-                mapboxgl.accessToken = mapboxToken || 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example';
+                // Check if Mapbox token is set
+                if (!mapboxToken || mapboxToken === '') {
+                    console.error('Mapbox token not configured');
+                    document.getElementById('map').innerHTML = `
+                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f3f4f6; padding: 40px; text-align: center;">
+                            <div>
+                                <h2 style="font-size: 24px; font-weight: bold; color: #1f2937; margin-bottom: 16px;">Mapbox Token Required</h2>
+                                <p style="color: #6b7280; margin-bottom: 8px;">Set the MAPBOX_TOKEN environment variable to display the map.</p>
+                                <p style="color: #9ca3af; font-size: 14px;">Get a free token at <a href="https://mapbox.com" target="_blank" style="color: #3b82f6;">mapbox.com</a></p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                mapboxgl.accessToken = mapboxToken;
                 
                 map = new mapboxgl.Map({
                     container: 'map',
@@ -143,26 +207,146 @@
                     zoom: config.default_zoom
                 });
                 
-                map.on('load', loadGridNodes);
+                map.on('load', async () => {
+                    await loadPowerPlants();
+                    await loadGridNodes();
+                    await loadStats();
+                    
+                    // Add right-click handler for map (for location evaluation)
+                    map.on('contextmenu', handleMapRightClick);
+                });
                 
             } catch (error) {
                 console.error('Error initializing map:', error);
+                document.getElementById('map').innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #fef2f2; padding: 40px; text-align: center;">
+                        <div>
+                            <h2 style="font-size: 24px; font-weight: bold; color: #991b1b; margin-bottom: 16px;">Error Loading Map</h2>
+                            <p style="color: #7f1d1d;">${error.message}</p>
+                        </div>
+                    </div>
+                `;
             }
+        }
+        
+        
+        // Load power plants
+        async function loadPowerPlants() {
+            try {
+                const params = new URLSearchParams();
+                if (currentFilters.renewableOnly) {
+                    params.append('renewable_only', 'true');
+                }
+                
+                const response = await fetch(`/api/power-plants/geojson?${params}`);
+                const geojson = await response.json();
+                
+                console.log(`Loaded ${geojson.features.length} power plants (clean energy filter: ${currentFilters.renewableOnly})`);
+                document.getElementById('plant-count').textContent = geojson.features.length.toLocaleString();
+                
+                // Update or add source - setData() triggers re-render automatically
+                if (map.getSource('power-plants')) {
+                    map.getSource('power-plants').setData(geojson);
+                } else {
+                    map.addSource('power-plants', {
+                        type: 'geojson',
+                        data: geojson,
+                        cluster: true,
+                        clusterMaxZoom: 10,
+                        clusterRadius: 50
+                    });
+                    
+                    addPowerPlantLayers();
+                }
+                
+            } catch (error) {
+                console.error('Error loading power plants:', error);
+            }
+        }
+        
+        // Add Mapbox layers for power plants
+        function addPowerPlantLayers() {
+            // Clusters
+            map.addLayer({
+                id: 'power-plants-clusters',
+                type: 'circle',
+                source: 'power-plants',
+                filter: ['has', 'point_count'],
+                paint: {
+                    'circle-color': '#6b7280',
+                    'circle-radius': [
+                        'step',
+                        ['get', 'point_count'],
+                        15, 10,
+                        20, 50,
+                        25, 100,
+                        30
+                    ],
+                    'circle-opacity': 0.7,
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#fff'
+                }
+            });
+            
+            // Cluster count
+            map.addLayer({
+                id: 'power-plants-cluster-count',
+                type: 'symbol',
+                source: 'power-plants',
+                filter: ['has', 'point_count'],
+                layout: {
+                    'text-field': '{point_count_abbreviated}',
+                    'text-size': 12,
+                    'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold']
+                },
+                paint: {
+                    'text-color': '#fff'
+                }
+            });
+            
+            // Individual plants
+            map.addLayer({
+                id: 'power-plants-points',
+                type: 'circle',
+                source: 'power-plants',
+                filter: ['!', ['has', 'point_count']],
+                paint: {
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'nameplate_mw'],
+                        0, 3,
+                        10, 5,
+                        100, 7,
+                        500, 10
+                    ],
+                    'circle-color': ['get', 'fuel_color'],
+                    'circle-opacity': 0.8,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#fff'
+                }
+            });
+            
+            // Click handlers
+            map.on('click', 'power-plants-points', handlePowerPlantClick);
+            map.on('click', 'power-plants-clusters', handleClusterClick);
+            
+            // Hover cursor
+            map.on('mouseenter', 'power-plants-points', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'power-plants-points', () => {
+                map.getCanvas().style.cursor = '';
+            });
         }
         
         // Load grid nodes
         async function loadGridNodes() {
             try {
                 const response = await fetch('/api/grid/nodes/geojson');
-                
-                if (!response.ok) {
-                    console.error('Failed to fetch grid nodes, using fallback data');
-                    loadFallbackNodes();
-                    return;
-                }
-                
                 const geojson = await response.json();
-                console.log('Loaded grid nodes:', geojson);
+                
+                console.log(`Loaded ${geojson.features.length} grid nodes`);
                 
                 // Add source
                 map.addSource('grid-nodes', {
@@ -171,268 +355,397 @@
                 });
                 
                 // Add layers
-                addMapLayers();
+                map.addLayer({
+                    id: 'grid-nodes-circle',
+                    type: 'circle',
+                    source: 'grid-nodes',
+                    paint: {
+                        'circle-radius': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'clean_gen'],
+                            0, 10,
+                            100, 20
+                        ],
+                        'circle-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'clean_gen'],
+                            0, '#ef4444',
+                            40, '#f97316',
+                            60, '#eab308',
+                            80, '#22c55e'
+                        ],
+                        'circle-opacity': 0.8,
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#fff'
+                    }
+                });
+                
+                map.addLayer({
+                    id: 'grid-nodes-label',
+                    type: 'symbol',
+                    source: 'grid-nodes',
+                    layout: {
+                        'text-field': ['get', 'name'],
+                        'text-size': 11,
+                        'text-offset': [0, 2],
+                        'text-anchor': 'top'
+                    },
+                    paint: {
+                        'text-color': '#374151',
+                        'text-halo-color': '#fff',
+                        'text-halo-width': 2
+                    }
+                });
+                
+                map.on('click', 'grid-nodes-circle', handleGridNodeClick);
+                map.on('mouseenter', 'grid-nodes-circle', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', 'grid-nodes-circle', () => {
+                    map.getCanvas().style.cursor = '';
+                });
                 
             } catch (error) {
                 console.error('Error loading grid nodes:', error);
-                loadFallbackNodes();
             }
         }
         
-        // Fallback data if API fails
-        function loadFallbackNodes() {
-            const fallbackData = {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "id": 1,
-                        "properties": {
-                            "id": 1,
-                            "name": "Pacific Northwest Node A",
-                            "clean_gen": 82,
-                            "transmission_headroom": 74,
-                            "reliability": 68,
-                            "region": "Pacific Northwest",
-                            "state": "OR"
-                        },
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [-122.676, 45.523]
-                        }
-                    },
-                    {
-                        "type": "Feature",
-                        "id": 2,
-                        "properties": {
-                            "id": 2,
-                            "name": "Northern California Node B",
-                            "clean_gen": 91,
-                            "transmission_headroom": 55,
-                            "reliability": 58,
-                            "region": "California",
-                            "state": "CA"
-                        },
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [-122.39, 40.55]
-                        }
-                    },
-                    {
-                        "type": "Feature",
-                        "id": 3,
-                        "properties": {
-                            "id": 3,
-                            "name": "Texas Panhandle Node C",
-                            "clean_gen": 75,
-                            "transmission_headroom": 88,
-                            "reliability": 72,
-                            "region": "Texas",
-                            "state": "TX"
-                        },
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [-101.83, 35.22]
-                        }
-                    },
-                    {
-                        "type": "Feature",
-                        "id": 4,
-                        "properties": {
-                            "id": 4,
-                            "name": "Midwest Corridor Node D",
-                            "clean_gen": 72,
-                            "transmission_headroom": 79,
-                            "reliability": 81,
-                            "region": "Midwest",
-                            "state": "IA"
-                        },
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [-93.62, 41.6]
-                        }
-                    },
-                    {
-                        "type": "Feature",
-                        "id": 5,
-                        "properties": {
-                            "id": 5,
-                            "name": "Southeast Node E",
-                            "clean_gen": 48,
-                            "transmission_headroom": 62,
-                            "reliability": 76,
-                            "region": "Southeast",
-                            "state": "GA"
-                        },
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [-83.38, 33.95]
-                        }
-                    }
-                ]
-            };
-            
-            console.log('Using fallback grid nodes');
-            
-            // Add source with fallback data
-            map.addSource('grid-nodes', {
-                type: 'geojson',
-                data: fallbackData
-            });
-            
-            // Add layers (same as successful load)
-            addMapLayers();
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/power-plants/stats');
+                const data = await response.json();
+                
+                document.getElementById('stat-total').textContent = data.total_plants.toLocaleString();
+                document.getElementById('stat-clean').textContent = 
+                    `${data.clean_count.toLocaleString()} (${data.clean_percentage}%)`;
+                
+                // Only count clean energy capacity
+                const cleanCapacity = Object.entries(data.by_fuel_category)
+                    .filter(([cat, info]) => info.is_clean)
+                    .reduce((sum, [cat, info]) => sum + info.total_capacity_mw, 0);
+                
+                document.getElementById('stat-capacity').textContent = 
+                    `${(cleanCapacity / 1000).toFixed(1)} GW`;
+                
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
         }
         
-        function addMapLayers() {
-            // Add layer - composite score visualization
-            map.addLayer({
-                id: 'nodes-circle',
-                type: 'circle',
-                source: 'grid-nodes',
-                paint: {
-                    'circle-radius': [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'clean_gen'],
-                        0, 8,
-                        100, 20
-                    ],
-                    'circle-color': [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'clean_gen'],
-                        0, '#ef4444',
-                        40, '#f97316',
-                        60, '#eab308',
-                        80, '#22c55e'
-                    ],
-                    'circle-opacity': 0.8,
-                    'circle-stroke-width': 2,
-                    'circle-stroke-color': '#fff'
-                }
-            });
+        // Handle filter changes
+        function handleFilterChange() {
+            const renewableCheckbox = document.getElementById('filter-renewable');
+            currentFilters.renewableOnly = renewableCheckbox.checked;
             
-            // Add labels
-            map.addLayer({
-                id: 'nodes-label',
-                type: 'symbol',
-                source: 'grid-nodes',
-                layout: {
-                    'text-field': ['get', 'name'],
-                    'text-size': 11,
-                    'text-offset': [0, 2],
-                    'text-anchor': 'top'
-                },
-                paint: {
-                    'text-color': '#374151',
-                    'text-halo-color': '#fff',
-                    'text-halo-width': 2
-                }
-            });
+            console.log('Filters updated:', currentFilters);
             
-            // Click handler
-            map.on('click', 'nodes-circle', handleNodeClick);
-            
-            // Hover effect
-            map.on('mouseenter', 'nodes-circle', () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', 'nodes-circle', () => {
-                map.getCanvas().style.cursor = '';
-            });
+            loadPowerPlants();
+            loadStats();
         }
         
-        // Handle node click
-        function handleNodeClick(e) {
+        // Handle cluster click (zoom in)
+        function handleClusterClick(e) {
+            const features = map.queryRenderedFeatures(e.point, {
+                layers: ['power-plants-clusters']
+            });
+            const clusterId = features[0].properties.cluster_id;
+            map.getSource('power-plants').getClusterExpansionZoom(
+                clusterId,
+                (err, zoom) => {
+                    if (err) return;
+                    map.easeTo({
+                        center: features[0].geometry.coordinates,
+                        zoom: zoom
+                    });
+                }
+            );
+        }
+        
+        // Handle power plant click
+        function handlePowerPlantClick(e) {
             const props = e.features[0].properties;
-            currentNode = props;
             
-            // Calculate composite score (default weights)
+            const content = `
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-2xl">${props.primary_fuel_category === 'SOLAR' ? '☀️' :
+                                                   props.primary_fuel_category === 'WIND' ? '💨' :
+                                                   props.primary_fuel_category === 'HYDRO' ? '💧' :
+                                                   props.primary_fuel_category === 'NUCLEAR' ? '⚛️' : '⚡'}</span>
+                        <h3 class="font-bold text-lg">${props.plant_name}</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Fuel Type:</span>
+                            <span class="font-semibold" style="color: ${props.fuel_color}">
+                                ${props.primary_fuel_category}
+                            </span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Capacity:</span>
+                            <span class="font-semibold">${props.nameplate_mw} MW</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Annual Gen:</span>
+                            <span class="font-semibold">${(props.annual_net_gen_mwh / 1000).toFixed(1)} GWh</span>
+                        </div>
+                        ${props.is_clean ? 
+                            '<div class="stat-badge bg-green-100 text-green-800 mt-2">✅ Clean Energy</div>' : 
+                            '<div class="stat-badge bg-gray-100 text-gray-600 mt-2">🚫 Not Clean Energy</div>'}
+                    </div>
+                </div>
+            `;
+            
+            showPreview(content);
+        }
+        
+        // Handle grid node click
+        function handleGridNodeClick(e) {
+            const props = e.features[0].properties;
+            
             const compositeScore = (
                 props.clean_gen * 0.4 +
                 props.transmission_headroom * 0.3 +
                 props.reliability * 0.3
             ).toFixed(1);
             
-            // Update preview box
-            document.getElementById('preview-name').textContent = props.name;
-            document.getElementById('preview-details').innerHTML = `
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <div class="text-gray-500">Clean Gen</div>
-                        <div class="font-semibold text-green-600">${props.clean_gen}</div>
+            const content = `
+                <div>
+                    <h3 class="font-bold text-lg mb-2">${props.name}</h3>
+                    <div class="grid grid-cols-2 gap-2 text-sm mb-3">
+                        <div>
+                            <div class="text-gray-500 text-xs">Clean Gen</div>
+                            <div class="font-semibold text-green-600">${props.clean_gen}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs">Transmission</div>
+                            <div class="font-semibold text-blue-600">${props.transmission_headroom}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs">Reliability</div>
+                            <div class="font-semibold text-purple-600">${props.reliability}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 text-xs">Composite</div>
+                            <div class="font-semibold text-gray-800">${compositeScore}</div>
+                        </div>
                     </div>
-                    <div>
-                        <div class="text-gray-500">Transmission</div>
-                        <div class="font-semibold text-blue-600">${props.transmission_headroom}</div>
+                    <div class="text-xs text-gray-600 border-t pt-2">
+                        <div>${props.region || 'N/A'}</div>
+                        <div>${props.state || 'N/A'}</div>
                     </div>
-                    <div>
-                        <div class="text-gray-500">Reliability</div>
-                        <div class="font-semibold text-purple-600">${props.reliability}</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500">Composite</div>
-                        <div class="font-semibold text-gray-800">${compositeScore}</div>
-                    </div>
-                </div>
-                <div class="mt-2 pt-2 border-t text-xs text-gray-600">
-                    <div>${props.region || 'N/A'}</div>
-                    <div>${props.state || 'N/A'}</div>
+                    <button onclick="window.location.href='/framework?site_id=${props.id}'" 
+                            class="mt-3 w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium text-sm">
+                        Evaluate Site →
+                    </button>
                 </div>
             `;
             
-            // Show preview box
+            showPreview(content);
+        }
+        
+        // Show preview box
+        function showPreview(content) {
+            document.getElementById('preview-content').innerHTML = content;
             document.getElementById('preview-box').style.display = 'block';
         }
         
-        // Send to framework
-        document.getElementById('send-to-framework').addEventListener('click', () => {
-            if (currentNode) {
-                window.location.href = `/framework?site_id=${currentNode.id}`;
+        // Handle map right-click for location evaluation
+        async function handleMapRightClick(e) {
+            // Prevent default context menu
+            e.preventDefault();
+            
+            // Extract coordinates from Mapbox event
+            // Mapbox returns lngLat object with lng and lat properties
+            const lng = e.lngLat.lng;
+            const lat = e.lngLat.lat;
+            
+            console.log(`Right-clicked at: lat=${lat}, lng=${lng}`);
+            console.log('Full event:', e);
+            
+            // Validate coordinates
+            if (isNaN(lat) || isNaN(lng)) {
+                console.error('Invalid coordinates from Mapbox event:', e.lngLat);
+                alert('Could not get valid coordinates from map click');
+                return;
             }
+            
+            console.log(`Evaluating location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            
+            // Show loading indicator
+            showPreview(`
+                <div class="text-center py-8">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p class="text-gray-600">Evaluating location...</p>
+                    <p class="text-xs text-gray-500 mt-2">Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}</p>
+                </div>
+            `);
+            
+            try {
+                // Call API to evaluate this location
+                const requestBody = {
+                    latitude: lat,
+                    longitude: lng,
+                    weight_clean: 0.4,
+                    weight_transmission: 0.3,
+                    weight_reliability: 0.3
+                };
+                
+                console.log('Sending request:', requestBody);
+                
+                const response = await fetch('/api/siting/evaluate-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const evaluation = await response.json();
+                console.log('Evaluation result:', evaluation);
+                
+                // Remove previous marker if exists
+                if (evaluationMarker) {
+                    evaluationMarker.remove();
+                }
+                
+                // Add marker at clicked location
+                evaluationMarker = new mapboxgl.Marker({
+                    color: '#3b82f6',
+                    scale: 0.8
+                })
+                    .setLngLat([lng, lat])
+                    .addTo(map);
+                
+                // Display evaluation results
+                displayLocationEvaluation(evaluation, lat, lng);
+                
+            } catch (error) {
+                console.error('Error evaluating location:', error);
+                showPreview(`
+                    <div class="text-center py-8">
+                        <div class="text-4xl mb-4">⚠️</div>
+                        <h3 class="font-bold text-red-600 mb-2">Evaluation Failed</h3>
+                        <p class="text-sm text-gray-600 mb-2">${error.message}</p>
+                        <p class="text-xs text-gray-500">Check browser console for details</p>
+                        <button onclick="document.getElementById('preview-box').style.display='none'" 
+                                class="mt-4 bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 text-sm">
+                            Close
+                        </button>
+                    </div>
+                `);
+            }
+        }
+        
+        // Display location evaluation results
+        function displayLocationEvaluation(evaluation, lat, lng) {
+            const scores = evaluation.score_breakdown;
+            
+            // Determine score color
+            const getScoreColor = (score) => {
+                if (score >= 80) return 'text-green-600';
+                if (score >= 60) return 'text-yellow-600';
+                if (score >= 40) return 'text-orange-600';
+                return 'text-red-600';
+            };
+            
+            const content = `
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-lg">📍 Location Evaluation</h3>
+                        <span class="text-xs text-gray-500">${lat.toFixed(4)}, ${lng.toFixed(4)}</span>
+                    </div>
+                    
+                    <div class="mb-4 p-3 bg-blue-50 rounded border-2 border-blue-200">
+                        <div class="text-xs text-gray-600 mb-1">Composite Score</div>
+                        <div class="text-3xl font-bold ${getScoreColor(scores.composite_score)}">
+                            ${scores.composite_score}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 text-sm mb-3">
+                        <div class="text-center p-2 bg-green-50 rounded">
+                            <div class="text-xs text-gray-600">Clean Gen</div>
+                            <div class="font-semibold ${getScoreColor(scores.clean_gen_score)}">${scores.clean_gen_score}</div>
+                        </div>
+                        <div class="text-center p-2 bg-blue-50 rounded">
+                            <div class="text-xs text-gray-600">Transmission</div>
+                            <div class="font-semibold ${getScoreColor(scores.transmission_score)}">${scores.transmission_score}</div>
+                        </div>
+                        <div class="text-center p-2 bg-purple-50 rounded">
+                            <div class="text-xs text-gray-600">Reliability</div>
+                            <div class="font-semibold ${getScoreColor(scores.reliability_score)}">${scores.reliability_score}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-xs text-gray-600 border-t pt-2 space-y-1">
+                        ${evaluation.evaluation_notes.map(note => `<div>• ${note}</div>`).join('')}
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 mt-3">
+                        <button onclick="clearEvaluationMarker()" 
+                                class="bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 font-medium text-sm">
+                            Clear
+                        </button>
+                        <button onclick="evaluateInFramework(${lat}, ${lng})" 
+                                class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium text-sm">
+                            Evaluate Site →
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            showPreview(content);
+        }
+        
+        // Navigate to framework page with coordinates
+        function evaluateInFramework(lat, lng) {
+            // Store coordinates in sessionStorage for framework page to pick up
+            sessionStorage.setItem('customLocation', JSON.stringify({ latitude: lat, longitude: lng }));
+            window.location.href = '/framework';
+        }
+        
+        // Clear evaluation marker
+        function clearEvaluationMarker() {
+            if (evaluationMarker) {
+                evaluationMarker.remove();
+                evaluationMarker = null;
+            }
+            document.getElementById('preview-box').style.display = 'none';
+        }
+        
+        // Layer toggles
+        document.getElementById('toggle-grid-nodes').addEventListener('change', (e) => {
+            const visibility = e.target.checked ? 'visible' : 'none';
+            map.setLayoutProperty('grid-nodes-circle', 'visibility', visibility);
+            map.setLayoutProperty('grid-nodes-label', 'visibility', visibility);
         });
         
-        // Close preview
+        document.getElementById('toggle-power-plants').addEventListener('change', (e) => {
+            const visibility = e.target.checked ? 'visible' : 'none';
+            map.setLayoutProperty('power-plants-points', 'visibility', visibility);
+            map.setLayoutProperty('power-plants-clusters', 'visibility', visibility);
+            map.setLayoutProperty('power-plants-cluster-count', 'visibility', visibility);
+        });
+        
+        document.getElementById('filter-renewable').addEventListener('change', handleFilterChange);
+        
         document.getElementById('close-preview').addEventListener('click', () => {
             document.getElementById('preview-box').style.display = 'none';
         });
         
-        // Layer toggles
-        document.getElementById('layer-clean-gen').addEventListener('change', (e) => {
-            updateLayerVisualization();
-        });
-        
-        document.getElementById('layer-transmission').addEventListener('change', (e) => {
-            updateLayerVisualization();
-        });
-        
-        document.getElementById('layer-reliability').addEventListener('change', (e) => {
-            updateLayerVisualization();
-        });
-        
-        function updateLayerVisualization() {
-            // For demo, just change circle color based on active layer
-            const cleanActive = document.getElementById('layer-clean-gen').checked;
-            const transActive = document.getElementById('layer-transmission').checked;
-            const relActive = document.getElementById('layer-reliability').checked;
-            
-            let property = 'clean_gen';
-            if (!cleanActive && transActive) property = 'transmission_headroom';
-            else if (!cleanActive && !transActive && relActive) property = 'reliability';
-            
-            map.setPaintProperty('nodes-circle', 'circle-color', [
-                'interpolate',
-                ['linear'],
-                ['get', property],
-                0, '#ef4444',
-                40, '#f97316',
-                60, '#eab308',
-                80, '#22c55e'
-            ]);
-        }
-        
-        // Initialize on page load
+        // Initialize
         initMap();
     </script>
 </body>

@@ -1,0 +1,58 @@
+{
+  "projects": [
+    {
+      "name": "360 Solar",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "21501 Hull Street Road, Mosley, VA"
+    },
+    {
+      "name": "Wythe County",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "Foster Falls Road, Suffolk, VA"
+    },
+    {
+      "name": "Waterloo Solar",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "Bastrop County, Texas"
+    },
+    {
+      "name": "Switchgrass",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "Hoosier Road, Suffolk, VA"
+    },
+    {
+      "name": "Lafitte Solar Park",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "343 McHenry Gin Rd., Monroe, LA 71202"
+    },
+    {
+      "name": "Harrisonburg",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "3793 Kratzer Road, Harrisonburg, VA"
+    },
+    {
+      "name": "Groves",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "Westmoreland County, VA"
+    },
+    {
+      "name": "Bluestem",
+      "energy_source": "Battery Storage + Solar",
+      "ppa_capacity_mw": 52,
+      "address": "LaPorte County, Indiana"
+    },
+    {
+      "name": "Big Pine",
+      "energy_source": "Solar",
+      "ppa_capacity_mw": 52,
+      "address": "Sussex County, Virginia"
+    }
+  ]
+}
