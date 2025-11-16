@@ -4,21 +4,22 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    /* Dark Theme - Professional Color Palette */
+    --background: 350 32% 8%;        /* #1C0D0E - Deep dark brown */
+    --foreground: 0 0% 98%;          /* #FAFAFA - Near white for text */
+    --card: 348 31% 92%;             /* #F3E7E8 - Light cream for cards */
+    --card-foreground: 350 32% 12%;  /* Darker text on cards */
+    --muted: 350 20% 20%;            /* Muted dark variant */
+    --muted-foreground: 348 15% 70%; /* Muted text */
+    --primary: 351 28% 70%;          /* #CE989D - Dusty rose accent */
+    --primary-foreground: 350 32% 8%; /* Dark text on rose */
+    --secondary: 348 31% 92%;        /* Light cream secondary */
+    --secondary-foreground: 350 32% 12%; /* Dark text */
+    --accent: 351 28% 70%;           /* Rose accent */
+    --accent-foreground: 350 32% 8%; /* Dark text on accent */
+    --border: 350 20% 25%;           /* Subtle borders */
+    --input: 350 20% 18%;            /* Input backgrounds */
+    --ring: 351 28% 70%;             /* Focus ring - rose */
     --radius: 0.5rem;
   }
 }

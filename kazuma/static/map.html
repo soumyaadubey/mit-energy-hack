@@ -14,137 +14,137 @@
     
     <style>
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 360px; background: white; z-index: 10; overflow-y: auto; }
+        .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 360px; background: rgba(243, 231, 232, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 10; overflow-y: auto; box-shadow: 2px 0 12px rgba(0,0,0,0.4); border-right: 1px solid rgba(206, 152, 157, 0.2); }
         .map-container { position: absolute; left: 360px; top: 0; bottom: 0; right: 0; }
-        .filter-group { padding: 12px; border-bottom: 1px solid #e5e7eb; }
-        .filter-checkbox { display: flex; align-items: center; padding: 6px 0; cursor: pointer; }
-        .filter-checkbox input { margin-right: 8px; cursor: pointer; }
-        .legend-item { display: flex; align-items: center; padding: 4px 0; font-size: 13px; }
-        .legend-color { width: 16px; height: 16px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
-        .preview-box { position: absolute; top: 20px; right: 20px; background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); z-index: 5; max-width: 320px; display: none; }
-        .stat-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .filter-group { padding: 16px; border-bottom: 1px solid rgba(206, 152, 157, 0.2); }
+        .filter-checkbox { display: flex; align-items: center; padding: 8px 0; cursor: pointer; }
+        .filter-checkbox input { margin-right: 10px; cursor: pointer; accent-color: #CE989D; }
+        .legend-item { display: flex; align-items: center; padding: 6px 0; font-size: 13px; }
+        .legend-color { width: 16px; height: 16px; border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+        .preview-box { position: absolute; top: 20px; right: 20px; background: rgba(243, 231, 232, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 5; max-width: 340px; display: none; border: 1px solid rgba(206, 152, 157, 0.3); }
+        .stat-badge { display: inline-block; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: 600; }
     </style>
 </head>
-<body class="bg-gray-50">
+<body style="background-color: #0A0506;">
     <!-- Left Sidebar -->
     <div class="sidebar shadow-lg">
-        <div class="p-4 border-b bg-gradient-to-r from-blue-600 to-blue-700">
-            <h1 class="text-xl font-bold text-white">Smart Grid Siting</h1>
-            <p class="text-blue-100 text-sm mt-1">Interactive Map View</p>
+        <div class="p-6 border-b" style="background-color: #CE989D;">
+            <h1 class="text-xl font-bold" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Smart Grid Siting</h1>
+            <p class="text-sm mt-1" style="color: #1C0D0E; opacity: 0.85;">Interactive Map View</p>
         </div>
         
         <!-- Map Layers Control -->
         <div class="filter-group">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Map Layers</h3>
+            <h3 class="font-semibold mb-3 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Map Layers</h3>
             <label class="filter-checkbox">
                 <input type="checkbox" id="toggle-grid-nodes" checked>
-                <span class="text-sm">Grid Nodes (40)</span>
+                <span class="text-sm" style="color: #2D1517;">Grid Nodes (40)</span>
             </label>
             <label class="filter-checkbox">
                 <input type="checkbox" id="toggle-power-plants" checked>
-                <span class="text-sm">Power Plants (<span id="plant-count">0</span>)</span>
+                <span class="text-sm" style="color: #2D1517;">Power Plants (<span id="plant-count">0</span>)</span>
             </label>
         </div>
         
         <!-- Click-to-Evaluate Info -->
-        <div class="filter-group bg-blue-50">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">🎯 Right-Click to Evaluate</h3>
-            <p class="text-xs text-gray-600">
+        <div class="filter-group" style="background-color: rgba(206, 152, 157, 0.15); border-left: 3px solid #CE989D;">
+            <h3 class="font-semibold mb-2 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Right-Click to Evaluate</h3>
+            <p class="text-xs" style="color: #3D2224;">
                 Right-click anywhere on the map to evaluate that location's siting potential
             </p>
         </div>
         
         <!-- Power Plants Filter -->
         <div class="filter-group">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Power Plants Filter</h3>
+            <h3 class="font-semibold mb-3 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Power Plants Filter</h3>
             
             <label class="filter-checkbox">
                 <input type="checkbox" id="filter-renewable" checked>
-                <span class="text-sm">Clean Energy Only (☀️💨💧🌋)</span>
+                <span class="text-sm" style="color: #2D1517;">Clean Energy Only</span>
             </label>
             
-            <div class="mt-2 text-xs text-gray-500 italic">
-                Only WND, SUN, WAT, GEO count as clean
+            <div class="mt-2 text-xs italic" style="color: #6D5557;">
+                Only Wind, Solar, Hydro, and Geothermal count as clean
             </div>
         </div>
         
         <!-- Grid Nodes Legend -->
         <div class="filter-group">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Grid Nodes (Clean Gen Score)</h3>
+            <h3 class="font-semibold mb-3 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Grid Nodes (Clean Gen Score)</h3>
             <div class="space-y-1">
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #22c55e;"></div>
-                    <span>80-100: Excellent</span>
+                    <div class="legend-color" style="background-color: #A3D9A5;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">80-100: Excellent</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #eab308;"></div>
-                    <span>60-79: Good</span>
+                    <div class="legend-color" style="background-color: #E8C4A8;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">60-79: Good</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #f97316;"></div>
-                    <span>40-59: Moderate</span>
+                    <div class="legend-color" style="background-color: #DBA895;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">40-59: Moderate</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #ef4444;"></div>
-                    <span>0-39: Limited</span>
+                    <div class="legend-color" style="background-color: #CE989D;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">0-39: Limited</span>
                 </div>
             </div>
         </div>
         
         <!-- Power Plants Legend -->
         <div class="filter-group">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Clean Energy Sources</h3>
+            <h3 class="font-semibold mb-3 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Clean Energy Sources</h3>
             <div class="space-y-1 mb-2">
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #22c55e;"></div>
-                    <span>☀️ Solar</span>
+                    <div class="legend-color" style="background-color: #E8D4A8;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">Solar</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #10b981;"></div>
-                    <span>💨 Wind</span>
+                    <div class="legend-color" style="background-color: #A3D9C2;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">Wind</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #0ea5e9;"></div>
-                    <span>💧 Hydro</span>
+                    <div class="legend-color" style="background-color: #9BC4E8;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">Hydro</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #84cc16;"></div>
-                    <span>🌋 Geothermal</span>
+                    <div class="legend-color" style="background-color: #B5A3D9;"></div>
+                    <span style="color: #2D1517; font-size: 13px;">Geothermal</span>
                 </div>
             </div>
-            <div class="text-xs text-gray-500 pt-2 border-t">
+            <div class="text-xs pt-2" style="border-top: 1px solid rgba(206, 152, 157, 0.2);">
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #9ca3af;"></div>
-                    <span>🚫 Non-clean (excluded)</span>
+                    <div class="legend-color" style="background-color: #8D7E80;"></div>
+                    <span style="color: #6D5557; font-size: 13px;">Non-clean (excluded)</span>
                 </div>
             </div>
         </div>
         
         <!-- Statistics -->
-        <div class="filter-group bg-green-50">
-            <h3 class="font-semibold text-gray-700 mb-2 text-sm">Clean Energy Statistics</h3>
-            <div class="space-y-2 text-xs text-gray-600">
+        <div class="filter-group" style="background-color: rgba(163, 217, 194, 0.15); border-left: 3px solid #A3D9C2;">
+            <h3 class="font-semibold mb-3 text-sm" style="color: #1C0D0E; font-family: 'Space Grotesk', sans-serif;">Clean Energy Statistics</h3>
+            <div class="space-y-2 text-xs">
                 <div class="flex justify-between">
-                    <span>Total Plants:</span>
-                    <span id="stat-total" class="font-semibold">-</span>
+                    <span style="color: #3D2224;">Total Plants:</span>
+                    <span id="stat-total" class="font-semibold" style="color: #2D1517;">-</span>
                 </div>
                 <div class="flex justify-between">
-                    <span>Clean Energy:</span>
-                    <span id="stat-clean" class="font-semibold text-green-700">-</span>
+                    <span style="color: #3D2224;">Clean Energy:</span>
+                    <span id="stat-clean" class="font-semibold" style="color: #A3D9C2;">-</span>
                 </div>
                 <div class="flex justify-between">
-                    <span>Clean Capacity:</span>
-                    <span id="stat-capacity" class="font-semibold text-green-700">-</span>
+                    <span style="color: #3D2224;">Clean Capacity:</span>
+                    <span id="stat-capacity" class="font-semibold" style="color: #A3D9C2;">-</span>
                 </div>
             </div>
-            <div class="mt-2 pt-2 border-t text-xs text-gray-500 italic">
-                Only WND, SUN, WAT, GEO sources
+            <div class="mt-2 pt-2 text-xs italic" style="border-top: 1px solid rgba(206, 152, 157, 0.2); color: #6D5557;">
+                Only Wind, Solar, Hydro, Geothermal sources
             </div>
         </div>
         
         <!-- Instructions -->
-        <div class="p-4 bg-blue-50 text-xs text-gray-700">
-            <p class="font-semibold mb-2">How to use:</p>
+        <div class="p-4 text-xs" style="background-color: rgba(206, 152, 157, 0.1); color: #2D1517;">
+            <p class="font-semibold mb-2" style="font-family: 'Space Grotesk', sans-serif;">How to use:</p>
             <ol class="list-decimal list-inside space-y-1">
                 <li>Enable "Right-Click to Evaluate" above</li>
                 <li><strong>Right-click</strong> anywhere to evaluate location</li>
@@ -202,7 +202,7 @@
                 
                 map = new mapboxgl.Map({
                     container: 'map',
-                    style: 'mapbox://styles/mapbox/light-v11',
+                    style: 'mapbox://styles/mapbox/dark-v11',
                     center: config.default_center,
                     zoom: config.default_zoom
                 });
@@ -371,10 +371,10 @@
                             'interpolate',
                             ['linear'],
                             ['get', 'clean_gen'],
-                            0, '#ef4444',
-                            40, '#f97316',
-                            60, '#eab308',
-                            80, '#22c55e'
+                            0, '#CE989D',
+                            40, '#DBA895',
+                            60, '#E8C4A8',
+                            80, '#A3D9A5'
                         ],
                         'circle-opacity': 0.8,
                         'circle-stroke-width': 2,
@@ -469,32 +469,29 @@
             const props = e.features[0].properties;
             
             const content = `
-                <div>
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-2xl">${props.primary_fuel_category === 'SOLAR' ? '☀️' :
-                                                   props.primary_fuel_category === 'WIND' ? '💨' :
-                                                   props.primary_fuel_category === 'HYDRO' ? '💧' :
-                                                   props.primary_fuel_category === 'NUCLEAR' ? '⚛️' : '⚡'}</span>
-                        <h3 class="font-bold text-lg">${props.plant_name}</h3>
+                <div style="color: #1C0D0E;">
+                    <div class="mb-3">
+                        <h3 class="font-bold text-lg" style="font-family: 'Space Grotesk', sans-serif; color: #1C0D0E;">${props.plant_name}</h3>
+                        <div class="text-xs" style="color: #6D5557; margin-top: 4px;">${props.primary_fuel_category}</div>
                     </div>
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
-                            <span class="text-gray-600">Fuel Type:</span>
+                            <span style="color: #6D5557;">Fuel Type:</span>
                             <span class="font-semibold" style="color: ${props.fuel_color}">
                                 ${props.primary_fuel_category}
                             </span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-600">Capacity:</span>
-                            <span class="font-semibold">${props.nameplate_mw} MW</span>
+                            <span style="color: #6D5557;">Capacity:</span>
+                            <span class="font-semibold" style="color: #CE989D;">${props.nameplate_mw} MW</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-600">Annual Gen:</span>
-                            <span class="font-semibold">${(props.annual_net_gen_mwh / 1000).toFixed(1)} GWh</span>
+                            <span style="color: #6D5557;">Annual Gen:</span>
+                            <span class="font-semibold" style="color: #CE989D;">${(props.annual_net_gen_mwh / 1000).toFixed(1)} GWh</span>
                         </div>
                         ${props.is_clean ? 
-                            '<div class="stat-badge bg-green-100 text-green-800 mt-2">✅ Clean Energy</div>' : 
-                            '<div class="stat-badge bg-gray-100 text-gray-600 mt-2">🚫 Not Clean Energy</div>'}
+                            '<div class="stat-badge mt-3" style="background-color: rgba(163, 217, 165, 0.3); color: #2D5F32;">Clean Energy</div>' : 
+                            '<div class="stat-badge mt-3" style="background-color: rgba(141, 126, 128, 0.3); color: #3D2224;">Non-Clean</div>'}
                     </div>
                 </div>
             `;
@@ -661,45 +658,49 @@
             };
             
             const content = `
-                <div>
+                <div style="color: #1C0D0E;">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-bold text-lg">📍 Location Evaluation</h3>
-                        <span class="text-xs text-gray-500">${lat.toFixed(4)}, ${lng.toFixed(4)}</span>
+                        <h3 class="font-bold text-lg" style="font-family: 'Space Grotesk', sans-serif; color: #1C0D0E;">Location Evaluation</h3>
+                        <span class="text-xs" style="color: #6D5557;">${lat.toFixed(4)}, ${lng.toFixed(4)}</span>
                     </div>
                     
-                    <div class="mb-4 p-3 bg-blue-50 rounded border-2 border-blue-200">
-                        <div class="text-xs text-gray-600 mb-1">Composite Score</div>
-                        <div class="text-3xl font-bold ${getScoreColor(scores.composite_score)}">
+                    <div class="mb-4 p-4 rounded" style="background-color: rgba(206, 152, 157, 0.15); border: 2px solid #CE989D;">
+                        <div class="text-xs mb-1" style="color: #6D5557;">Composite Score</div>
+                        <div class="text-3xl font-bold" style="color: #CE989D;">
                             ${scores.composite_score}
                         </div>
                     </div>
                     
                     <div class="grid grid-cols-3 gap-2 text-sm mb-3">
-                        <div class="text-center p-2 bg-green-50 rounded">
-                            <div class="text-xs text-gray-600">Clean Gen</div>
-                            <div class="font-semibold ${getScoreColor(scores.clean_gen_score)}">${scores.clean_gen_score}</div>
+                        <div class="text-center p-2 rounded" style="background-color: rgba(163, 217, 165, 0.15);">
+                            <div class="text-xs" style="color: #6D5557;">Clean Gen</div>
+                            <div class="font-semibold" style="color: #A3D9A5;">${scores.clean_gen_score}</div>
                         </div>
-                        <div class="text-center p-2 bg-blue-50 rounded">
-                            <div class="text-xs text-gray-600">Transmission</div>
-                            <div class="font-semibold ${getScoreColor(scores.transmission_score)}">${scores.transmission_score}</div>
+                        <div class="text-center p-2 rounded" style="background-color: rgba(155, 196, 232, 0.15);">
+                            <div class="text-xs" style="color: #6D5557;">Transmission</div>
+                            <div class="font-semibold" style="color: #9BC4E8;">${scores.transmission_score}</div>
                         </div>
-                        <div class="text-center p-2 bg-purple-50 rounded">
-                            <div class="text-xs text-gray-600">Reliability</div>
-                            <div class="font-semibold ${getScoreColor(scores.reliability_score)}">${scores.reliability_score}</div>
+                        <div class="text-center p-2 rounded" style="background-color: rgba(181, 163, 217, 0.15);">
+                            <div class="text-xs" style="color: #6D5557;">Reliability</div>
+                            <div class="font-semibold" style="color: #B5A3D9;">${scores.reliability_score}</div>
                         </div>
                     </div>
                     
-                    <div class="text-xs text-gray-600 border-t pt-2 space-y-1">
+                    <div class="text-xs pt-2 space-y-1" style="border-top: 1px solid rgba(206, 152, 157, 0.2); color: #3D2224;">
                         ${evaluation.evaluation_notes.map(note => `<div>• ${note}</div>`).join('')}
                     </div>
                     
                     <div class="grid grid-cols-2 gap-2 mt-3">
                         <button onclick="clearEvaluationMarker()" 
-                                class="bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 font-medium text-sm">
+                                style="background-color: #8D7E80; color: #F3E7E8; padding: 8px 16px; border-radius: 6px; font-weight: 500; font-size: 14px; border: none; cursor: pointer;"
+                                onmouseover="this.style.backgroundColor='#6D5E60'"
+                                onmouseout="this.style.backgroundColor='#8D7E80'">
                             Clear
                         </button>
                         <button onclick="evaluateInFramework(${lat}, ${lng})" 
-                                class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium text-sm">
+                                style="background-color: #CE989D; color: #1C0D0E; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 14px; border: none; cursor: pointer;"
+                                onmouseover="this.style.backgroundColor='#B87F84'"
+                                onmouseout="this.style.backgroundColor='#CE989D'">
                             Evaluate Site →
                         </button>
                     </div>
